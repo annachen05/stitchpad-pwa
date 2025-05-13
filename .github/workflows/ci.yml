@@ -1,0 +1,32 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with: { node-version: '18' }
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test:unit
+      - run: npm run test:e2e
+  deploy:
+    needs: build-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with: { node-version: '18' }
+      - run: npm ci
+      - run: npm run build
+      - name: Deploy to Netlify
+        uses: nwtgck/actions-netlify@v1
+        with:
+          publish-dir: './dist'
+        env:
+            netlify_auth_token: $ {{ secrets.netlify_auth_token }}
+            netlify_site_id: $ {{ secrets.netlify_site_id }}
