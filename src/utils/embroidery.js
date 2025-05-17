@@ -9,34 +9,30 @@ import { saveAs } from 'file-saver'
  * Speichert das aktuelle Design in dem gewählten Format.
  * @param {'exp'|'dst'|'svg'} format
  * @param {string} name
- * @param {Array} paths  // deine Pfad-Daten aus dem Store
+ * @param {Array} paths
  */
 export function saveDesign(format, name, paths) {
-  // TurtleShepherd-Instanz erstellen und Pfade laden
   const turtleShepherd = new TurtleShepherd()
-  turtleShepherd.loadPaths(paths)  // angenommen, es gibt eine solche Methode
+  turtleShepherd.loadPaths(paths)
 
-  let blob, expUintArr, svgStr
+  let blob, data
 
   switch (format) {
     case 'exp':
-      arr  = ts.toEXP()
-      expUintArr = turtleShepherd.toEXP()
-      blob = new Blob([expUintArr], { type: 'application/octet-stream' })
+      data = turtleShepherd.toEXP()
+      blob = new Blob([data], { type: 'application/octet-stream' })
       saveAs(blob, name + '.exp')
       break
 
     case 'dst':
-      arr  = ts.toDST(name)
-      expUintArr = turtleShepherd.toDST(name)
-      blob = new Blob([expUintArr], { type: 'application/octet-stream' })
+      data = turtleShepherd.toDST(name)
+      blob = new Blob([data], { type: 'application/octet-stream' })
       saveAs(blob, name + '.dst')
       break
 
     case 'svg':
-      svgStr = ts.toSVG()
-      svgStr = turtleShepherd.toSVG()
-      blob = new Blob([svgStr], { type: 'text/plain;charset=utf-8' })
+      data = turtleShepherd.toSVG()
+      blob = new Blob([data], { type: 'image/svg+xml' })
       saveAs(blob, name + '.svg')
       break
 
@@ -48,3 +44,6 @@ export function saveDesign(format, name, paths) {
 export { writeDST } from '../Stitchpad-master/Stitchpad-master/www/js/app.js'
 export { writeEXP } from '../Stitchpad-master/Stitchpad-master/www/js/app.js'
 export { exportSVG } from '../Stitchpad-master/Stitchpad-master/www/js/app.js'
+
+// Beispiel: Nach dem Zeichnen
+designStore.setPaths(neuePfade)
