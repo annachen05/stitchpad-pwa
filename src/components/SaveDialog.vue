@@ -6,25 +6,25 @@
       <option value="exp">EXP</option>
       <option value="svg">SVG</option>
     </select>
-    <button @click="onSave">Speichern</button>
+    <button @click="onOk">OK</button>
+    <button @click="onCancel">Abbrechen</button>
   </div>
 </template>
 
-<script>
+<script setup>
 import { ref } from 'vue'
-import { useStitchStore } from '@/stores/stitch'
+import { useStitchStore } from '@/store/stitch'
 
-export default {
-  setup() {
-    const store     = useStitchStore()
-    const fileName  = ref('mein-design')
-    const format    = ref('dst')
+const emit = defineEmits(['close'])
+const store = useStitchStore()
+const fileName = ref('mein-design')
+const format = ref('dst')
 
-    function onSave() {
-      store.exportDesign(format.value, fileName.value)
-    }
-
-    return { fileName, format, onSave }
-  }
+function onOk() {
+  store.export(format.value, fileName.value)
+  emit('close')
+}
+function onCancel() {
+  emit('close')
 }
 </script>
