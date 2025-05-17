@@ -1,12 +1,13 @@
 git status<template>
-  <!-- Wir fügen hier später unsere Komponenten ein -->
-  <div id="app"></div>
+  <div id="app">
+    <!-- … andere Komponenten wie Toolbar & Canvas … -->
+    <SaveDialog />
+  </div>
 </template>
 
 <script>
-export default {
-  name: 'App'
-}
+import SaveDialog from './components/SaveDialog.vue'
+export default { components: { SaveDialog }}
 </script>
 
 <style>
