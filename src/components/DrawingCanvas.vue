@@ -1,10 +1,13 @@
-<canvas
-  ref="canvas"
-  @pointerdown="startDraw"
-  @pointermove="draw"
-  @pointerup="endDraw"
-></canvas>
+<template>
+  <canvas
+    ref="canvas"
+    @pointerdown="startDraw"
+    @pointermove="draw"
+    @pointerup="endDraw"
+  ></canvas>
+</template>
 
+<script>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useStitchStore } from '@/stores/stitch'
 
@@ -49,9 +52,20 @@ export default {
       // aktueller Pfad
       drawPath(currentPath)
     }
-    function drawGrid() { /* Raster zeichnen */ }
-    function drawBackground() { /* Bild zeichnen */ }
-    function drawPath(path) { /* Linien zeichnen */ }
+    function drawGrid() {
+      // Stub: Raster zeichnen (noch nicht implementiert)
+      // Beispiel: ctx.value.strokeRect(0, 0, 10, 10)
+    }
+
+    function drawBackground() {
+      // Stub: Hintergrund zeichnen (noch nicht implementiert)
+      // Beispiel: ctx.value.drawImage(...)
+    }
+
+    function drawPath(path) {
+      // Stub: Pfad zeichnen (noch nicht implementiert)
+      // Beispiel: ctx.value.beginPath(); ctx.value.moveTo(...); ctx.value.lineTo(...); ctx.value.stroke();
+    }
 
     onMounted(() => {
       const c = canvas.value
@@ -64,4 +78,5 @@ export default {
     return { canvas, startDraw, draw, endDraw }
   }
 }
+</script>
 

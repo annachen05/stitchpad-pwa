@@ -12,8 +12,10 @@ export const useStitchStore = defineStore('stitch', {
     addPath(path) { this.paths.push(path) },
     toggleGrid() { this.gridOn = !this.gridOn },
     setBackground(dataUrl) { this.background = dataUrl },
-    // placeholder für Export/Import:
-    async export(format, name) { /* importiere util und rufe hier auf */ },
+    async export(format, name = 'meinDesign') {
+      // Exportiere die aktuellen Pfade
+      saveDesign(format, name, this.paths)
+    },
     async importDST(file) { /* lese Datei und parse */ },
   }
 })
