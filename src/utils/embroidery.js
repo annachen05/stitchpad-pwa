@@ -1,7 +1,7 @@
 // src/utils/embroidery.js
 
 // 1. Importiere TurtleShepherd aus dem third-party-Ordner
-import TurtleShepherd from '@/../Stitchpad-master/www/js/app.js'
+import { TurtleShepherd } from '../lib/app.js'
 // 2. Importiere saveAs (falls du FileSaver.js nutzt)
 import { saveAs } from 'file-saver'
 
@@ -41,9 +41,4 @@ export function saveDesign(format, name, paths) {
   }
 }
 
-export { writeDST } from '../Stitchpad-master/Stitchpad-master/www/js/app.js'
-export { writeEXP } from '../Stitchpad-master/Stitchpad-master/www/js/app.js'
-export { exportSVG } from '../Stitchpad-master/Stitchpad-master/www/js/app.js'
-
-// Beispiel: Nach dem Zeichnen
-designStore.setPaths(neuePfade)
+export { exportDST, exportEXP, exportSVG, importDST } from '../lib/app.js'
