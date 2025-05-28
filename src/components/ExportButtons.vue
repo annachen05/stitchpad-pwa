@@ -1,20 +1,24 @@
 <script setup>
 import { useStitchStore } from '@/store/stitch'
-const stitchStore = useStitchStore()
+import { saveAs } from 'file-saver'
+const store = useStitchStore()
 
-function exportSVG() {
-  stitchStore.export('svg', 'meinDesign')
+function saveDST() {
+  const blob = new Blob([store.exportDST('design')], { type: 'application/octet-stream' })
+  saveAs(blob, 'design.dst')
 }
-function exportDST() {
-  stitchStore.export('dst', 'meinDesign')
+function saveEXP() {
+  const blob = new Blob([store.exportEXP()], { type: 'application/octet-stream' })
+  saveAs(blob, 'design.exp')
 }
-function exportEXP() {
-  stitchStore.export('exp', 'meinDesign')
+function saveSVG() {
+  const blob = new Blob([store.exportSVG()], { type: 'image/svg+xml' })
+  saveAs(blob, 'design.svg')
 }
 </script>
 
 <template>
-  <button @click="exportSVG">SVG exportieren</button>
-  <button @click="exportDST">DST exportieren</button>
-  <button @click="exportEXP">EXP exportieren</button>
+  <button @click="saveDST">Export DST</button>
+  <button @click="saveEXP">Export EXP</button>
+  <button @click="saveSVG">Export SVG</button>
 </template>

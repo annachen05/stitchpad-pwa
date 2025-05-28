@@ -4,7 +4,7 @@ const routes = [
   {
     path: '/',
     name: 'Home',
-    component: () => import('@/components/HelloWorld.vue') // Example route
+    component: () => import('@/components/DrawingCanvas.vue') // Main drawing component
   }
 ]
 

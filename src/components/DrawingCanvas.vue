@@ -1,82 +1,100 @@
 <template>
-  <canvas
-    ref="canvas"
-    @pointerdown="startDraw"
-    @pointermove="draw"
-    @pointerup="endDraw"
-  ></canvas>
+  <div
+    ref="canvasRef"
+    class="drawing-canvas"
+    @mousedown="onPointerDown"
+    @mousemove="onPointerMove"
+    @mouseup="onPointerUp"
+    @mouseleave="onPointerUp"
+    @dragover.prevent
+    @drop="onDrop"
+  >
+    <svg :width="width" :height="height" style="background: #fff; border: 1px solid #ccc; width: 100%; height: 100%">
+      <g>
+        <line
+          v-for="(step, i) in store.shepherd.steps"
+          :key="i"
+          :x1="step.x1"
+          :y1="step.y1"
+          :x2="step.x2"
+          :y2="step.y2"
+          :stroke="step.penDown ? '#333' : '#f00'"
+          :stroke-width="step.penDown ? 2 : 1"
+          :opacity="step.penDown ? 1 : 0.5"
+        />
+        <circle
+          v-for="(step, i) in store.shepherd.steps"
+          :key="'pt-' + i"
+          :cx="step.x2"
+          :cy="step.y2"
+          r="2"
+          fill="#7a0081"
+          opacity="0.8"
+        />
+      </g>
+    </svg>
+    <div v-if="store.grid" class="grid-overlay"></div>
+  </div>
 </template>
 
-<script>
+<script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
-import { useStitchStore } from '@/stores/stitch'
+import { useStitchStore } from '@/store/stitch'
 
-export default {
-  setup() {
-    const canvas = ref(null)
-    const ctx = ref(null)
-    const store = useStitchStore()
-    let drawing = false
-    let currentPath = []
+const store = useStitchStore()
+const canvasRef = ref(null)
+const width = window.innerWidth
+const height = window.innerHeight - 100
 
-    function startDraw(e) {
-      drawing = true
-      currentPath = []
-      addPoint(e)
-    }
-    function draw(e) {
-      if (!drawing) return
-      addPoint(e)
-      redrawCanvas()
-    }
-    function endDraw() {
-      drawing = false
-      store.addPath(currentPath)
-    }
-    function addPoint(e) {
-      const rect = canvas.value.getBoundingClientRect()
-      currentPath.push({
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top
-      })
-    }
-    function redrawCanvas() {
-      const c = canvas.value
-      ctx.value.clearRect(0, 0, c.width, c.height)
-      // Raster
-      if (store.gridOn) drawGrid()
-      // Hintergrund
-      if (store.background) drawBackground()
-      // Alle Pfade
-      store.paths.forEach(path => drawPath(path))
-      // aktueller Pfad
-      drawPath(currentPath)
-    }
-    function drawGrid() {
-      // Stub: Raster zeichnen (noch nicht implementiert)
-      // Beispiel: ctx.value.strokeRect(0, 0, 10, 10)
-    }
+let drawing = false
+let lastPos = null
 
-    function drawBackground() {
-      // Stub: Hintergrund zeichnen (noch nicht implementiert)
-      // Beispiel: ctx.value.drawImage(...)
-    }
-
-    function drawPath(path) {
-      // Stub: Pfad zeichnen (noch nicht implementiert)
-      // Beispiel: ctx.value.beginPath(); ctx.value.moveTo(...); ctx.value.lineTo(...); ctx.value.stroke();
-    }
-
-    onMounted(() => {
-      const c = canvas.value
-      ctx.value = c.getContext('2d')
-      c.width = 800; c.height = 800
-      redrawCanvas()
-    })
-    onUnmounted(() => { /* cleanup falls nötig */ })
-
-    return { canvas, startDraw, draw, endDraw }
+function getRelativePos(e) {
+  const rect = canvasRef.value.getBoundingClientRect()
+  return {
+    x: e.clientX - rect.left,
+    y: e.clientY - rect.top
   }
 }
+
+function onPointerDown(e) {
+  drawing = true
+  lastPos = getRelativePos(e)
+}
+function onPointerMove(e) {
+  if (!drawing) return
+  const pos = getRelativePos(e)
+  if (lastPos) {
+    store.addLine(lastPos.x, lastPos.y, pos.x, pos.y, true)
+    lastPos = pos
+  }
+}
+function onPointerUp(e) {
+  drawing = false
+  lastPos = null
+}
+const onDrop = (e) => {
+  const file = e.dataTransfer.files[0]
+  if (file) store.importDST(file)
+}
+
+onMounted(() => {
+  // Optional: Keyboard shortcuts, wheel zoom, etc.
+})
+onUnmounted(() => {
+  // Cleanup if needed
+})
 </script>
+
+<style scoped>
+.drawing-canvas {
+  width: 100vw;
+  height: calc(100vh - 100px);
+  position: relative;
+  overflow: hidden;
+}
+svg {
+  display: block;
+}
+</style>
 

@@ -1,7 +1,10 @@
 <template>
   <div class="toolbar">
-    <button @click="store.clear">Neu</button>
-    <button @click="store.toggleGrid">Raster umschalten</button>
+    <button @click="store.undo">Undo</button>
+    <button @click="store.toggleGrid">Grid</button>
+    <button @click="zoomIn">+</button>
+    <button @click="zoomOut">-</button>
+    <input type="file" @change="onDSTImport" accept=".dst" />
     <label>
       Hintergrund laden
       <input type="file" accept="image/*" @change="onBackgroundChange" style="display:none" />
@@ -10,7 +13,6 @@
       DST importieren
       <input type="file" accept=".dst" @change="onDSTImport" style="display:none" />
     </label>
-    <button @click="openSaveDialog">Speichern</button>
   </div>
 </template>
 
@@ -39,5 +41,16 @@ function onDSTImport(e) {
 
 function openSaveDialog() {
   showSaveDialog.value = true
+}
+
+function zoomIn() {
+  if (store.shepherd && typeof store.shepherd.zoom === 'function') {
+    store.shepherd.zoom(1.1) // 10% reinzoomen
+  }
+}
+function zoomOut() {
+  if (store.shepherd && typeof store.shepherd.zoom === 'function') {
+    store.shepherd.zoom(0.9) // 10% rauszoomen
+  }
 }
 </script>

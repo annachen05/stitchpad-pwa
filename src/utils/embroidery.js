@@ -1,8 +1,7 @@
 // src/utils/embroidery.js
 
 // 1. Importiere TurtleShepherd aus dem third-party-Ordner
-import { TurtleShepherd } from '../lib/app.js'
-// 2. Importiere saveAs (falls du FileSaver.js nutzt)
+import { TurtleShepherd, exportDST, exportEXP, exportSVG, importDST } from '@/lib/app'
 import { saveAs } from 'file-saver'
 
 /**
@@ -37,8 +36,8 @@ export function saveDesign(format, name, paths) {
       break
 
     default:
-      throw new Error(`Unbekanntes Format: ${format}`)
+      throw new Error(`Unbekanntes Format: {format}`)
   }
 }
 
-export { exportDST, exportEXP, exportSVG, importDST } from '../lib/app.js'
+export { TurtleShepherd, exportDST, exportEXP, exportSVG, importDST }

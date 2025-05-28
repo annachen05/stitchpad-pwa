@@ -15,19 +15,20 @@
 
 a {
   font-weight: 500;
-  color: #646cff;
+  color: #7a0081;
   text-decoration: inherit;
 }
 a:hover {
-  color: #535bf2;
+  color: #7a0081;
 }
 
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
+  min-width: 100vw;
   min-height: 100vh;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
 }
 
 h1 {
@@ -59,10 +60,75 @@ button:focus-visible {
 }
 
 #app {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
+  max-width: 100vw;
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
   text-align: center;
+}
+
+drawing-canvas, #stage {
+  position: relative;
+  width: 100vw;
+  height: calc(100vh - 100px); /* 80px für Toolbar, ggf. anpassen */
+  background: #fff;
+  border: 1px solid #ccc;
+  margin: 0 auto;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.grid-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  background-image: linear-gradient(to right, #e0e0e0 1px, transparent 1px),
+    linear-gradient(to bottom, #e0e0e0 1px, transparent 1px);
+  background-size: 25px 25px;
+  z-index: 1;
+  opacity: 0.7;
+}
+
+.drawing-canvas {
+  position: relative;
+  width: 100vw;
+  height: 80vh;
+  background: #fff;
+  border: 1px solid #ccc;
+  margin: 0 auto;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+#stage {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+}
+
+.export-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #222;
+  padding: 0.5rem 0;
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  z-index: 100;
+}
+.export-bar button {
+  color: #fff;
+  background: #5e5e5e;
+  border: 1px solid #444;
 }
 
 @media (prefers-color-scheme: light) {
