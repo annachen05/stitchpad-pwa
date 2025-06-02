@@ -21,6 +21,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.52.0",
+    "@types/node": "^22.15.29",
     "@vitejs/plugin-vue": "^5.2.3",
     "eslint": "^9.28.0",
     "eslint-config-prettier": "^10.1.5",
