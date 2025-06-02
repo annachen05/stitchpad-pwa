@@ -19,7 +19,7 @@
 
 <script setup>
 import { useStitchStore } from '@/store/stitch'
-import { ref, defineEmits } from 'vue'
+import { ref } from 'vue'
 
 const store = useStitchStore()
 const showSaveDialog = ref(false)
