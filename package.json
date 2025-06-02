@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "eslint --config eslint.config.js --ext .js,.vue src/",
+    "lint": "eslint --config eslint.config.cjs --ext .js,.vue src/",
     "format": "prettier --write \"**/*.{js,vue,json,css,md}\"",
     "test:unit": "vitest"
   },
