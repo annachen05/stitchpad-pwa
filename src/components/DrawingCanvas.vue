@@ -9,7 +9,12 @@
     @dragover.prevent
     @drop="onDrop"
   >
-    <svg :width="width" :height="height" style="background: #fff; border: 1px solid #ccc; width: 100%; height: 100%">
+    <svg
+      :width="width"
+      :height="height"
+      style="background: #fff; border: 1px solid #ccc; width: 100%; height: 100%"
+      :style="{ transform: `scale(${scale})`, transformOrigin: 'top left' }"
+    >
       <g>
         <line
           v-for="(step, i) in store.shepherd.steps"
@@ -40,6 +45,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useStitchStore } from '@/store/stitch'
+import { lineInterpolate } from '@/utils/embroidery'
 
 const store = useStitchStore()
 const canvasRef = ref(null)
@@ -48,13 +54,22 @@ const height = window.innerHeight - 100
 
 let drawing = false
 let lastPos = null
+let isJump = ref(false)
+let interpolate = ref(false)
+const dist_min = 8
+const dist_max = 12
+const scale = ref(1)
 
 function getRelativePos(e) {
   const rect = canvasRef.value.getBoundingClientRect()
   return {
-    x: e.clientX - rect.left,
-    y: e.clientY - rect.top
+    x: (e.clientX - rect.left) / scale.value,
+    y: (e.clientY - rect.top) / scale.value,
   }
+}
+
+function toggleJump() {
+  isJump.value = !isJump.value
 }
 
 function onPointerDown(e) {
@@ -65,7 +80,21 @@ function onPointerMove(e) {
   if (!drawing) return
   const pos = getRelativePos(e)
   if (lastPos) {
-    store.addLine(lastPos.x, lastPos.y, pos.x, pos.y, true)
+    const dx = lastPos.x - pos.x
+    const dy = lastPos.y - pos.y
+    const dist = Math.sqrt(dx * dx + dy * dy)
+    if (dist > dist_max && interpolate.value && !isJump.value) {
+      const points = lineInterpolate(lastPos, pos, dist_min, dist)
+      for (let i = 0; i < points.length - 1; i++) {
+        store.addLine(points[i].x, points[i].y, points[i + 1].x, points[i + 1].y, true)
+        lastPos = points[i + 1]
+      }
+    } else if (dist > dist_min) {
+      store.addLine(lastPos.x, lastPos.y, pos.x, pos.y, !isJump.value)
+      lastPos = pos
+      if (isJump.value) isJump.value = false // auto-reset jump after one segment
+    }
+  } else {
     lastPos = pos
   }
 }
@@ -79,11 +108,32 @@ const onDrop = (e) => {
 }
 
 onMounted(() => {
-  // Optional: Keyboard shortcuts, wheel zoom, etc.
+  window.addEventListener('keydown', handleKeydown)
+  if (store.shepherd && typeof store.shepherd.zoom === 'function') {
+    store.shepherd.zoom = (factor) => {
+      scale.value = Math.max(0.2, Math.min(scale.value * factor, 5))
+    }
+  }
 })
 onUnmounted(() => {
-  // Cleanup if needed
+  window.removeEventListener('keydown', handleKeydown)
 })
+
+function handleKeydown(e) {
+  if (e.key === 'j') toggleJump()
+  if (e.key === 'i') interpolate.value = !interpolate.value
+}
+
+function applyScale() {
+  // Trigger ein Re-Rendern, falls nötig (z.B. mit nextTick oder forceUpdate)
+}
+
+function zoomIn() {
+  scale.value = Math.min(scale.value * 1.1, 5)
+}
+function zoomOut() {
+  scale.value = Math.max(scale.value * 0.9, 0.2)
+}
 </script>
 
 <style scoped>
@@ -97,4 +147,3 @@ svg {
   display: block;
 }
 </style>
-

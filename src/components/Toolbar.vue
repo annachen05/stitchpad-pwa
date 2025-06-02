@@ -1,27 +1,29 @@
 <template>
-  <div class="toolbar">
+  <div class="toolbar toolbar-bottom">
     <button @click="store.undo">Undo</button>
     <button @click="store.toggleGrid">Grid</button>
     <button @click="zoomIn">+</button>
     <button @click="zoomOut">-</button>
+    <button @click="emit('toggle-jump')">Jump</button>
     <input type="file" @change="onDSTImport" accept=".dst" />
     <label>
       Hintergrund laden
-      <input type="file" accept="image/*" @change="onBackgroundChange" style="display:none" />
+      <input type="file" accept="image/*" @change="onBackgroundChange" style="display: none" />
     </label>
     <label>
       DST importieren
-      <input type="file" accept=".dst" @change="onDSTImport" style="display:none" />
+      <input type="file" accept=".dst" @change="onDSTImport" style="display: none" />
     </label>
   </div>
 </template>
 
 <script setup>
 import { useStitchStore } from '@/store/stitch'
-import { ref } from 'vue'
+import { ref, defineEmits } from 'vue'
 
 const store = useStitchStore()
 const showSaveDialog = ref(false)
+const emit = defineEmits(['toggle-jump'])
 
 function onBackgroundChange(e) {
   const file = e.target.files[0]
@@ -54,3 +56,46 @@ function zoomOut() {
   }
 }
 </script>
+
+<style scoped>
+.toolbar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  display: flex;
+  justify-content: space-around;
+  background-color: #f8f8f8;
+  border-top: 1px solid #ccc;
+  padding: 10px;
+}
+.toolbar-bottom {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #222;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0;
+  z-index: 100;
+  gap: 1rem;
+}
+.toolbar-bottom button,
+.toolbar-bottom label {
+  color: #fff;
+  background: #333;
+  border: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  padding: 0.7em 0.5em;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.toolbar-bottom button:hover,
+.toolbar-bottom label:hover {
+  background: #7b008155;
+}
+</style>

@@ -7,6 +7,6 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
-    include: ['tests/**/*.spec.js']
-  }
+    include: ['tests/**/*.spec.js'],
+  },
 })

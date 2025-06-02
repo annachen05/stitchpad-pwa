@@ -8,13 +8,27 @@ export const useStitchStore = defineStore('stitch', {
     // weitere States
   }),
   actions: {
-    clear() { this.shepherd.clear() },
-    undo() { this.shepherd.undoStep() },
-    addLine(x1, y1, x2, y2, penDown) { this.shepherd.moveTo(x1, y1, x2, y2, penDown) },
-    exportDST(name) { return exportDST(this.shepherd, name) },
-    exportEXP() { return exportEXP(this.shepherd) },
-    exportSVG() { return exportSVG(this.shepherd) },
-    toggleGrid() { this.grid = !this.grid },
+    clear() {
+      this.shepherd.clear()
+    },
+    undo() {
+      this.shepherd.undoStep()
+    },
+    addLine(x1, y1, x2, y2, penDown) {
+      this.shepherd.moveTo(x1, y1, x2, y2, penDown)
+    },
+    exportDST(name) {
+      return exportDST(this.shepherd, name)
+    },
+    exportEXP() {
+      return exportEXP(this.shepherd)
+    },
+    exportSVG() {
+      return exportSVG(this.shepherd)
+    },
+    toggleGrid() {
+      this.grid = !this.grid
+    },
     // weitere Actions
-  }
+  },
 })

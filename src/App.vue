@@ -31,13 +31,13 @@ export default {
     return {
       showSaveDialog: false,
       showAboutDialog: false,
-      sideToolbarOpen: true
+      sideToolbarOpen: true,
     }
   },
   setup() {
     const store = useStitchStore()
     return { store }
-  }
+  },
 }
 </script>
 
@@ -54,7 +54,9 @@ export default {
   align-items: center;
   padding-top: 2rem;
   z-index: 10;
-  transition: transform 0.3s cubic-bezier(.4,2,.6,1), opacity 0.3s;
+  transition:
+    transform 0.3s cubic-bezier(0.4, 2, 0.6, 1),
+    opacity 0.3s;
 }
 .side-toolbar.closed {
   transform: translateX(-100%);
