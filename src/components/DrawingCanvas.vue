@@ -53,7 +53,7 @@ const width = window.innerWidth
 const height = window.innerHeight - 100
 
 let drawing = false
-let lastPos = null
+let lastPos = ref(null)
 let isJump = ref(false)
 let interpolate = ref(false)
 const dist_min = 8
@@ -68,39 +68,91 @@ function getRelativePos(e) {
   }
 }
 
+function addPoint(pos) {
+  store.addPoint(pos.x, pos.y)
+}
+
+function addLine(pos1, pos2) {
+  const dist = Math.sqrt(
+    Math.pow(pos1.x - pos2.x, 2) + Math.pow(pos1.y - pos2.y, 2)
+  )
+
+  if (isJump.value) {
+    store.addLine(pos1.x, pos1.y, pos2.x, pos2.y, false)
+    toggleJump()
+  } else {
+    store.addLine(pos1.x, pos1.y, pos2.x, pos2.y, true)
+  }
+}
+
+function drag(e) {
+  const pos = getRelativePos(e)
+  if (lastPos.value) {
+    const dist = Math.sqrt(
+      Math.pow(lastPos.value.x - pos.x, 2) +
+      Math.pow(lastPos.value.y - pos.y, 2)
+    )
+    if (dist > dist_max && interpolate.value && !isJump.value) {
+      const points = lineInterpolate(lastPos.value, pos, dist_min, dist)
+      console.log('Interpolated Points:', points);
+      for (let i = 0; i < points.length - 1; i++) {
+        addPoint(points[i + 1])
+        addLine(points[i], points[i + 1])
+        lastPos.value = points[i + 1]
+      }
+    } else if (dist > dist_min) {
+      addPoint(pos)
+      addLine(lastPos.value, pos)
+      lastPos.value = pos
+    }
+  } else {
+    addPoint(pos)
+    lastPos.value = pos
+  }
+}
+
+function dragEnd() {
+  lastPos.value = null
+}
+
 function toggleJump() {
   isJump.value = !isJump.value
 }
 
+function toggleInterpolate() {
+  interpolate.value = !interpolate.value;
+}
+
 function onPointerDown(e) {
   drawing = true
-  lastPos = getRelativePos(e)
+  lastPos.value = getRelativePos(e)
 }
 function onPointerMove(e) {
   if (!drawing) return
   const pos = getRelativePos(e)
-  if (lastPos) {
-    const dx = lastPos.x - pos.x
-    const dy = lastPos.y - pos.y
+  if (lastPos.value) {
+    const dx = lastPos.value.x - pos.x
+    const dy = lastPos.value.y - pos.y
     const dist = Math.sqrt(dx * dx + dy * dy)
     if (dist > dist_max && interpolate.value && !isJump.value) {
-      const points = lineInterpolate(lastPos, pos, dist_min, dist)
+      const points = lineInterpolate(lastPos.value, pos, dist_min, dist)
+      console.log('Interpolated Points:', points);
       for (let i = 0; i < points.length - 1; i++) {
         store.addLine(points[i].x, points[i].y, points[i + 1].x, points[i + 1].y, true)
-        lastPos = points[i + 1]
+        lastPos.value = points[i + 1]
       }
     } else if (dist > dist_min) {
-      store.addLine(lastPos.x, lastPos.y, pos.x, pos.y, !isJump.value)
-      lastPos = pos
+      store.addLine(lastPos.value.x, lastPos.value.y, pos.x, pos.y, !isJump.value)
+      lastPos.value = pos
       if (isJump.value) isJump.value = false // auto-reset jump after one segment
     }
   } else {
-    lastPos = pos
+    lastPos.value = pos
   }
 }
 function onPointerUp(e) {
   drawing = false
-  lastPos = null
+  lastPos.value = null
 }
 const onDrop = (e) => {
   const file = e.dataTransfer.files[0]
@@ -121,7 +173,7 @@ onUnmounted(() => {
 
 function handleKeydown(e) {
   if (e.key === 'j') toggleJump()
-  if (e.key === 'i') interpolate.value = !interpolate.value
+  if (e.key === 'i') toggleInterpolate()
 }
 
 function applyScale() {

@@ -36,7 +36,9 @@ export default {
   },
   setup() {
     const store = useStitchStore()
-    return { store }
+    return { store,
+      interpolate: store.interpolate,
+      toggleInterpolate: store.toggleInterpolate, }
   },
 }
 </script>

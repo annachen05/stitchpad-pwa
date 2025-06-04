@@ -4,7 +4,8 @@
     <button @click="store.toggleGrid">Grid</button>
     <button @click="zoomIn">+</button>
     <button @click="zoomOut">-</button>
-    <button @click="emit('toggle-jump')">Jump</button>
+    <button @click="store.toggleJump" class="toolbar-button">Toggle Jump</button>
+    <button @click="store.toggleInterpolate" class="toolbar-button">Toggle Interpolate</button>
     <input type="file" @change="onDSTImport" accept=".dst" />
     <label>
       Hintergrund laden
@@ -54,6 +55,12 @@ function zoomOut() {
   if (store.shepherd && typeof store.shepherd.zoom === 'function') {
     store.shepherd.zoom(0.9) // 10% rauszoomen
   }
+}
+function toggleJump() {
+  store.toggleJump();
+}
+function toggleInterpolate() {
+  store.toggleInterpolate();
 }
 </script>
 
