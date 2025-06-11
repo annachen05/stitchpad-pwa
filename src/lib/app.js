@@ -29,8 +29,16 @@ class TurtleShepherd {
     return new Uint8Array([0x00])
   }
   toSVG() {
-    // TODO: Implement real SVG export logic
-    return '<svg></svg>'
+    const svgHeader = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">';
+    const svgFooter = '</svg>';
+    const svgContent = this.steps.map(step => {
+      if (step.penDown) {
+        return `<line x1="${step.x1}" y1="${step.y1}" x2="${step.x2}" y2="${step.y2}" stroke="#333" stroke-width="2" />`;
+      } else {
+        return `<line x1="${step.x1}" y1="${step.y1}" x2="${step.x2}" y2="${step.y2}" stroke="#f00" stroke-width="1" opacity="0.5" />`;
+      }
+    }).join('');
+    return `${svgHeader}${svgContent}${svgFooter}`;
   }
   fromDST(content) {
     // TODO: Implement DST import logic
