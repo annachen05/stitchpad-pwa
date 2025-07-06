@@ -16,6 +16,7 @@
       :style="{ transform: `scale(${scale})`, transformOrigin: 'top left' }"
     >
       <g>
+        <!-- Render each step as individual line segments -->
         <line
           v-for="(step, i) in store.shepherd.steps"
           :key="i"
@@ -27,6 +28,7 @@
           :stroke-width="step.penDown ? 2 : 1"
           :opacity="step.penDown ? 1 : 0.5"
         />
+        <!-- Show interpolation points as purple dots -->
         <circle
           v-for="(step, i) in store.shepherd.steps"
           :key="'pt-' + i"
@@ -43,6 +45,7 @@
 </template>
 
 <script setup>
+// filepath: c:\Users\annam\Desktop\stitchpad-pwa\src\components\DrawingCanvas.vue
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useStitchStore } from '@/store/stitch'
 import { lineInterpolate } from '@/utils/embroidery'
@@ -75,18 +78,24 @@ function ensureConnectedPoints(pos) {
     const dist = Math.sqrt(
       Math.pow(lastPos.value.x - pos.x, 2) + Math.pow(lastPos.value.y - pos.y, 2)
     )
+
     if (dist > dist_max && interpolate.value && !jump.value) {
+      // Get interpolated points
       const points = lineInterpolate(lastPos.value, pos, dist_min, dist)
+
+      // Connect each consecutive pair of points as separate lines
       for (let i = 0; i < points.length - 1; i++) {
         addLine(points[i], points[i + 1])
       }
-      lastPos.value = pos // Update to final position
+
+      lastPos.value = pos
     } else {
+      // Direct connection without interpolation
       addLine(lastPos.value, pos)
-      lastPos.value = pos // Update to current position
+      lastPos.value = pos
     }
   } else {
-    // First point - just set the position, don't draw anything yet
+    // First point - just set the position
     lastPos.value = pos
   }
 }
@@ -104,12 +113,13 @@ function onPointerDown(e) {
   drawing = true
   const pos = getRelativePos(e)
 
-  // If we have a previous position, connect to it
+  // If we have a previous position, connect to it with interpolation
   if (lastPos.value) {
-    addLine(lastPos.value, pos)
+    ensureConnectedPoints(pos) // ← Use this instead of addLine()
+  } else {
+    // First point - just set the position
+    lastPos.value = pos
   }
-
-  lastPos.value = pos
 }
 
 function onPointerMove(e) {

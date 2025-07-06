@@ -10,7 +10,7 @@
       @click="toggleJump"
       title="Toggle Jump (Shortcut: J)"
     >
-      🐇
+      🐇 JUMP
     </button>
     <button
       id="interp-icon"
@@ -18,7 +18,7 @@
       @click="toggleInterpolate"
       title="Toggle Interpolate (Shortcut: I)"
     >
-      ✏️
+      🔗 INT
     </button>
     <button @click="exportGCode" title="Export G-code">📐 G-code</button>
     <button @click="openSaveDialog">Speichern</button>
