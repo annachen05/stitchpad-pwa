@@ -36,9 +36,7 @@ export default {
   },
   setup() {
     const store = useStitchStore()
-    return { store,
-      interpolate: store.interpolate,
-      toggleInterpolate: store.toggleInterpolate, }
+    return { store, interpolate: store.interpolate, toggleInterpolate: store.toggleInterpolate }
   },
 }
 </script>
@@ -80,7 +78,7 @@ export default {
   transition: background 0.2s;
 }
 .toolbar-toggle:hover {
-  background: #8c2e70;
+  background: #b62b8c;
 }
 .side-toolbar button {
   margin: 1rem 0;

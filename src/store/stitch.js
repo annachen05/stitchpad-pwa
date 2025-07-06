@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
-import { TurtleShepherd, exportDST, exportEXP, exportSVG } from '@/lib/app'
+import { TurtleShepherd, exportDST, exportEXP, exportSVG } from '@/lib/app.js'
+import { generateGCode } from '@/utils/exportUtils.js'
 
 export const useStitchStore = defineStore('stitch', {
   state: () => ({
@@ -7,7 +8,6 @@ export const useStitchStore = defineStore('stitch', {
     grid: true,
     isJump: false,
     interpolate: false,
-    // weitere States
   }),
   actions: {
     clear() {
@@ -20,7 +20,7 @@ export const useStitchStore = defineStore('stitch', {
       this.shepherd.moveTo(x1, y1, x2, y2, penDown)
     },
     addPoint(x, y) {
-      this.shepherd.addPoint(x, y);
+      this.shepherd.addPoint(x, y)
     },
     exportDST(name) {
       return exportDST(this.shepherd, name)
@@ -31,15 +31,14 @@ export const useStitchStore = defineStore('stitch', {
     exportSVG() {
       return exportSVG(this.shepherd)
     },
+    exportGCode(name = 'design') {
+      return generateGCode(this.shepherd.steps, name)
+    },
     toggleGrid() {
       this.grid = !this.grid
     },
     toggleJump() {
-      this.isJump = !this.isJump;
+      this.isJump = !this.isJump
     },
-    toggleInterpolate() {
-      this.interpolate = !this.interpolate;
-    },
-    // weitere Actions
   },
 })

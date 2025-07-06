@@ -1,8 +1,9 @@
 // src/utils/embroidery.js
 
 // 1. Importiere TurtleShepherd aus dem third-party-Ordner
-import { TurtleShepherd, exportDST, exportEXP, exportSVG, importDST } from '@/lib/app'
+import { TurtleShepherd, exportDST, exportEXP, exportSVG, importDST } from '@/lib/app.js'
 import { saveAs } from 'file-saver'
+import { validateDST, validateDSTStitches } from '@/utils/exportUtils'
 
 /**
  * Speichert das aktuelle Design in dem gewählten Format.
@@ -11,22 +12,24 @@ import { saveAs } from 'file-saver'
  * @param {Array} paths
  */
 export function saveDesign(format, name, paths) {
+  name = name || 'Stitchpad PWA' // Default name if none is provided
   const turtleShepherd = new TurtleShepherd()
   turtleShepherd.loadPaths(paths)
 
   let blob, data
 
   switch (format) {
+    case 'dst':
+      data = turtleShepherd.toDST(name)
+      validateDST(data) // Validate DST file before saving
+      blob = new Blob([data], { type: 'application/octet-stream' })
+      saveAs(blob, name + '.dst')
+      break
+
     case 'exp':
       data = turtleShepherd.toEXP()
       blob = new Blob([data], { type: 'application/octet-stream' })
       saveAs(blob, name + '.exp')
-      break
-
-    case 'dst':
-      data = turtleShepherd.toDST(name)
-      blob = new Blob([data], { type: 'application/octet-stream' })
-      saveAs(blob, name + '.dst')
       break
 
     case 'svg':
@@ -36,8 +39,26 @@ export function saveDesign(format, name, paths) {
       break
 
     default:
-      throw new Error(`Unbekanntes Format: {format}`)
+      throw new Error(`Unknown format: ${format}`) // Keep error handling for invalid formats
   }
+}
+
+/**
+ * Importiert ein DST-Dateiformat und gibt die Schritte zurück.
+ * @param {File} file - Die zu importierende DST-Datei.
+ */
+export function importDSTFile(file) {
+  const reader = new FileReader()
+  reader.onload = (event) => {
+    const fileContent = new Uint8Array(event.target.result)
+    console.log('Imported DST file content:', fileContent)
+    console.log('File length:', fileContent.length)
+
+    validateDST(fileContent) // Pass fileContent to validateDST
+    validateDSTStitches(fileContent)
+    console.log('DST file is valid')
+  }
+  reader.readAsArrayBuffer(file)
 }
 
 /**
@@ -68,5 +89,3 @@ export function lineInterpolate(point1, point2, distance, total) {
   }
   return result
 }
-
-export { TurtleShepherd, exportDST, exportEXP, exportSVG, importDST }

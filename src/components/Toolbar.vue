@@ -4,8 +4,24 @@
     <button @click="store.toggleGrid">Grid</button>
     <button @click="zoomIn">+</button>
     <button @click="zoomOut">-</button>
-    <button @click="store.toggleJump" class="toolbar-button">Toggle Jump</button>
-    <button @click="store.toggleInterpolate" class="toolbar-button">Toggle Interpolate</button>
+    <button
+      id="jump-icon"
+      :class="{ active: jump }"
+      @click="toggleJump"
+      title="Toggle Jump (Shortcut: J)"
+    >
+      🐇
+    </button>
+    <button
+      id="interp-icon"
+      :class="{ active: interpolate }"
+      @click="toggleInterpolate"
+      title="Toggle Interpolate (Shortcut: I)"
+    >
+      ✏️
+    </button>
+    <button @click="exportGCode" title="Export G-code">📐 G-code</button>
+    <button @click="openSaveDialog">Speichern</button>
     <input type="file" @change="onDSTImport" accept=".dst" />
     <label>
       Hintergrund laden
@@ -21,10 +37,14 @@
 <script setup>
 import { useStitchStore } from '@/store/stitch'
 import { ref } from 'vue'
+import { useToggleFlags } from '@/composables/useToggleFlags'
+import { saveAs } from 'file-saver'
 
 const store = useStitchStore()
 const showSaveDialog = ref(false)
 const emit = defineEmits(['toggle-jump'])
+
+const { jump, interpolate, toggleJump, toggleInterpolate } = useToggleFlags()
 
 function onBackgroundChange(e) {
   const file = e.target.files[0]
@@ -56,11 +76,16 @@ function zoomOut() {
     store.shepherd.zoom(0.9) // 10% rauszoomen
   }
 }
-function toggleJump() {
-  store.toggleJump();
-}
-function toggleInterpolate() {
-  store.toggleInterpolate();
+
+function exportGCode() {
+  try {
+    const gcode = store.exportGCode('my-design')
+    const blob = new Blob([gcode], { type: 'text/plain' })
+    saveAs(blob, 'design.gcode')
+  } catch (error) {
+    console.error('G-code export failed:', error)
+    alert('Failed to export G-code: ' + error.message)
+  }
 }
 </script>
 
@@ -73,9 +98,10 @@ function toggleInterpolate() {
   display: flex;
   justify-content: space-around;
   background-color: #f8f8f8;
-  border-top: 1px solid #ccc;
+  border-top: none; /* Remove top border */
   padding: 10px;
 }
+
 .toolbar-bottom {
   position: fixed;
   left: 0;
@@ -86,10 +112,12 @@ function toggleInterpolate() {
   flex-direction: row;
   align-items: center;
   justify-content: center;
-  padding: 0.5rem 0;
+  padding: 1.6rem 0;
   z-index: 100;
   gap: 1rem;
+  border: none;
 }
+
 .toolbar-bottom button,
 .toolbar-bottom label {
   color: #fff;
@@ -101,8 +129,13 @@ function toggleInterpolate() {
   cursor: pointer;
   transition: background 0.2s;
 }
+
 .toolbar-bottom button:hover,
 .toolbar-bottom label:hover {
   background: #7b008155;
+}
+
+button.active {
+  background-color: var(--active-bg);
 }
 </style>
