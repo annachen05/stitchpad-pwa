@@ -107,7 +107,7 @@ function exportGCode() {
   left: 0;
   right: 0;
   bottom: 0;
-  background: #222;
+  background: #222222;
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -120,7 +120,7 @@ function exportGCode() {
 
 .toolbar-bottom button,
 .toolbar-bottom label {
-  color: #fff;
+  color: #fffffffd;
   background: #333;
   border: none;
   border-radius: 6px;
