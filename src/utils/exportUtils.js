@@ -193,40 +193,49 @@ export function toDST(name) {
  * @returns {string} G-code string representation of the design.
  */
 export function generateGCode(steps, name = 'design') {
-  let gcode = []
-  let currentZ = 0
+  //––– 1) calculate stitch count & extents
+  const stitchCount = steps.length;
+  const xs = steps.map(s => s.x2);
+  const ys = steps.map(s => s.y2);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const width  = maxX - minX,   height = maxY - minY;
 
-  // G-code header
-  gcode.push('; G-code generated from StitchPad')
-  gcode.push(`; Design name: ${name}`)
-  gcode.push(`; Generated on: ${new Date().toISOString()}`)
-  gcode.push('G21 ; Set units to millimeters')
-  gcode.push('G90 ; Absolute positioning')
-  gcode.push('G28 ; Home all axes')
-  gcode.push('')
+  let gcode = [];
+  let currentZ = 0;
+  const dz = 5;
 
-  // Process each step
-  steps.forEach((step, index) => {
-    if (step.penDown) {
-      // Move to start position
-      gcode.push(`G0 X${step.x1.toFixed(2)} Y${step.y1.toFixed(2)} Z${currentZ.toFixed(2)}`)
-      // Draw to end position
-      gcode.push(`G1 X${step.x2.toFixed(2)} Y${step.y2.toFixed(2)} Z${currentZ.toFixed(2)}`)
-      currentZ += 5
-    } else {
-      // Jump stitch - lift pen and move
-      gcode.push(`G0 X${step.x1.toFixed(2)} Y${step.y1.toFixed(2)} Z${currentZ.toFixed(2)}`)
-      gcode.push(`G0 X${step.x2.toFixed(2)} Y${step.y2.toFixed(2)} Z${currentZ.toFixed(2)}`)
-      currentZ += 5
-    }
-  })
+  //––– 2) header + your new metadata lines
+  gcode.push(`; Design name: ${name}`);
+  gcode.push(`; Generated on: ${new Date().toISOString()}`);
+  gcode.push(`(STITCH_COUNT:${stitchCount})`);
+  gcode.push(`(EXTENTS_LEFT:${minX.toFixed(3)})`);
+  gcode.push(`(EXTENTS_TOP:${minY.toFixed(3)})`);
+  gcode.push(`(EXTENTS_RIGHT:${maxX.toFixed(3)})`);
+  gcode.push(`(EXTENTS_BOTTOM:${maxY.toFixed(3)})`);
+  gcode.push(`(EXTENTS_WIDTH:${width.toFixed(3)})`);
+  gcode.push(`(EXTENTS_HEIGHT:${height.toFixed(3)})`);
+  gcode.push('G90');
+  gcode.push('G21');
+  gcode.push('G28 ; Home all axes');
+  gcode.push('G0 X0.0 Y0.0');
+  gcode.push('');
 
-  // G-code footer
-  gcode.push('')
-  gcode.push('G28 ; Home all axes')
-  gcode.push('M30 ; Program end')
+  //––– 3) each step: always G0 XY then G0 Z+=5
+  steps.forEach(step => {
+    const x = step.x2.toFixed(3);
+    const y = step.y2.toFixed(3);
+    gcode.push(`G0 X${x} Y${y}`);
+    currentZ += dz;
+    gcode.push(`G0 Z${currentZ.toFixed(1)}`);
+  });
 
-  return gcode.join('\n')
+  //––– 4) footer
+  gcode.push('');
+  gcode.push('G28 ; Home all axes');
+  gcode.push('M30 ; Program end');
+
+  return gcode.join('\n');
 }
 
 /**
