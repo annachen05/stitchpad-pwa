@@ -28,6 +28,6 @@ export default defineConfig({
     },
   },
   server: {
-    port: 3050, // Change to a different port if needed
+    port: 3000, // Change to a different port if needed
   },
 })

@@ -6,6 +6,7 @@
     <div class="side-toolbar" :class="{ closed: !sideToolbarOpen }">
       <button @click="showSaveDialog = true">Speichern</button>
       <button @click="store.clear">Neu</button>
+      <button @click="exportGCode" title="Export G-code">Export G-code</button>
       <ExportButtons />
     </div>
     <router-view />
@@ -18,12 +19,14 @@
 </template>
 
 <script>
+// filepath: c:\Users\annam\Desktop\stitchpad-pwa\src\App.vue
 import Toolbar from './components/Toolbar.vue'
 import DrawingCanvas from './components/DrawingCanvas.vue'
 import ExportButtons from './components/ExportButtons.vue'
 import SaveDialog from './components/SaveDialog.vue'
 import AboutDialogue from './components/AboutDialogue.vue'
 import { useStitchStore } from '@/store/stitch'
+import { saveAs } from 'file-saver'
 
 export default {
   components: { Toolbar, DrawingCanvas, ExportButtons, SaveDialog, AboutDialogue },
@@ -36,7 +39,25 @@ export default {
   },
   setup() {
     const store = useStitchStore()
-    return { store, interpolate: store.interpolate, toggleInterpolate: store.toggleInterpolate }
+
+    // Add exportGCode function to the side toolbar
+    function exportGCode() {
+      try {
+        const gcode = store.exportGCode('my-design')
+        const blob = new Blob([gcode], { type: 'text/plain' })
+        saveAs(blob, 'design.gcode')
+      } catch (error) {
+        console.error('G-code export failed:', error)
+        alert('Failed to export G-code: ' + error.message)
+      }
+    }
+
+    return {
+      store,
+      interpolate: store.interpolate,
+      toggleInterpolate: store.toggleInterpolate,
+      exportGCode,
+    }
   },
 }
 </script>

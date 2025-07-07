@@ -4,6 +4,9 @@
     <button @click="store.toggleGrid">Grid</button>
     <button @click="zoomIn">+</button>
     <button @click="zoomOut">-</button>
+    <button @click="resetZoom" title="Reset Zoom (1:1)">🎯</button>
+    <!-- Add this -->
+
     <button
       id="jump-icon"
       :class="{ active: jump }"
@@ -20,25 +23,23 @@
     >
       🔗 INT
     </button>
-    <button @click="exportGCode" title="Export G-code">📐 G-code</button>
-    <button @click="openSaveDialog">Speichern</button>
-    <input type="file" @change="onDSTImport" accept=".dst" />
-    <label>
-      Hintergrund laden
-      <input type="file" accept="image/*" @change="onBackgroundChange" style="display: none" />
-    </label>
-    <label>
-      DST importieren
-      <input type="file" accept=".dst" @change="onDSTImport" style="display: none" />
-    </label>
+
+    <button @click="$refs.unifiedInput.click()">Datei laden</button>
+    <input
+      type="file"
+      ref="unifiedInput"
+      @change="onUnifiedFileChange"
+      accept=".dst,image/*"
+      style="display: none"
+    />
   </div>
 </template>
 
 <script setup>
+// filepath: c:\Users\annam\Desktop\stitchpad-pwa\src\components\Toolbar.vue
 import { useStitchStore } from '@/store/stitch'
 import { ref } from 'vue'
 import { useToggleFlags } from '@/composables/useToggleFlags'
-import { saveAs } from 'file-saver'
 
 const store = useStitchStore()
 const showSaveDialog = ref(false)
@@ -46,46 +47,39 @@ const emit = defineEmits(['toggle-jump'])
 
 const { jump, interpolate, toggleJump, toggleInterpolate } = useToggleFlags()
 
-function onBackgroundChange(e) {
-  const file = e.target.files[0]
-  if (!file) return
-  const reader = new FileReader()
-  reader.onload = (evt) => {
-    store.setBackground(evt.target.result)
-  }
-  reader.readAsDataURL(file)
-}
-
-function onDSTImport(e) {
-  const file = e.target.files[0]
-  if (!file) return
-  store.importDST(file)
-}
-
-function openSaveDialog() {
-  showSaveDialog.value = true
-}
-
+// Updated zoom functions to use store scale management
 function zoomIn() {
-  if (store.shepherd && typeof store.shepherd.zoom === 'function') {
-    store.shepherd.zoom(1.1) // 10% reinzoomen
-  }
-}
-function zoomOut() {
-  if (store.shepherd && typeof store.shepherd.zoom === 'function') {
-    store.shepherd.zoom(0.9) // 10% rauszoomen
-  }
+  store.zoomIn(1.1) // 10% zoom in
 }
 
-function exportGCode() {
-  try {
-    const gcode = store.exportGCode('my-design')
-    const blob = new Blob([gcode], { type: 'text/plain' })
-    saveAs(blob, 'design.gcode')
-  } catch (error) {
-    console.error('G-code export failed:', error)
-    alert('Failed to export G-code: ' + error.message)
+function zoomOut() {
+  store.zoomOut(0.9) // 10% zoom out
+}
+
+// Add reset zoom function (optional)
+function resetZoom() {
+  store.resetZoom()
+}
+
+function onUnifiedFileChange(e) {
+  const file = e.target.files[0]
+  if (!file) return
+
+  if (file.name.toLowerCase().endsWith('.dst')) {
+    store.importDST(file)
+    console.log('DST file imported:', file.name)
+  } else if (file.type.startsWith('image/')) {
+    const reader = new FileReader()
+    reader.onload = (evt) => {
+      store.setBackground(evt.target.result)
+      console.log('Background image loaded:', file.name)
+    }
+    reader.readAsDataURL(file)
+  } else {
+    alert('Please select a DST file (.dst) or an image file')
   }
+
+  e.target.value = ''
 }
 </script>
 

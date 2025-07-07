@@ -1,15 +1,3 @@
-try {
-  // Ensure fileContent is defined before validation
-  const fileContent = new Uint8Array([
-    /* Binary content of the DST file */
-  ])
-  validateDST(fileContent)
-  validateDSTStitches(fileContent)
-  console.log('DST file is valid')
-} catch (error) {
-  console.error('DST file validation failed:', error.message)
-}
-
 /**
  * Validates the structure of a DST file.
  * @param {Uint8Array} content - The binary content of the DST file.
@@ -193,38 +181,63 @@ export function toDST(name) {
  * @returns {string} G-code string representation of the design.
  */
 export function generateGCode(steps, name = 'design') {
-  let gcode = []
-  let currentZ = 0
+  //––– calculate stitch count & raw extents
+  const stitchCount = steps.length
+  const xs = steps.map((s) => s.x2),
+    ys = steps.map((s) => s.y2)
+  const minX = Math.min(...xs),
+    maxX = Math.max(...xs)
+  const minY = Math.min(...ys),
+    maxY = Math.max(...ys)
+  const width = maxX - minX,
+    height = maxY - minY
 
-  // G-code header
-  gcode.push('; G-code generated from StitchPad')
-  gcode.push(`; Design name: ${name}`)
-  gcode.push(`; Generated on: ${new Date().toISOString()}`)
-  gcode.push('G21 ; Set units to millimeters')
-  gcode.push('G90 ; Absolute positioning')
-  gcode.push('G28 ; Home all axes')
+  //––– your machine’s travel limits
+  const deviceMaxX = 70
+  const deviceMaxY = 130
+  //––– compute uniform scale
+  const scaleX = width > 0 ? deviceMaxX / width : 1
+  const scaleY = height > 0 ? deviceMaxY / height : 1
+  const scale = Math.min(scaleX, scaleY)
+
+  //––– debug / metadata - REMOVE THESE LINES
+  let gcode = []
+  gcode.push(`RAW_MAX_X:${maxX.toFixed(3)}`)
+  gcode.push(`RAW_MAX_Y:${maxY.toFixed(3)}`)
+  gcode.push(`SCALE_FACTOR:${scale.toFixed(3)}`)
+
+  //––– existing headers…
+  gcode.push(`Design name: ${name}`)
+  gcode.push(`Generated on: ${new Date().toISOString()}`)
+  gcode.push(`(STITCH_COUNT:${stitchCount})`)
+  gcode.push(`(EXTENTS_LEFT:${minX.toFixed(3)})`)
+  gcode.push(`(EXTENTS_TOP:${minY.toFixed(3)})`)
+  gcode.push(`(EXTENTS_RIGHT:${maxX.toFixed(3)})`)
+  gcode.push(`(EXTENTS_BOTTOM:${maxY.toFixed(3)})`)
+  gcode.push(`(EXTENTS_WIDTH:${width.toFixed(3)})`)
+  gcode.push(`(EXTENTS_HEIGHT:${height.toFixed(3)})`)
+  gcode.push('G90')
+  gcode.push('G21')
+  gcode.push('G28')
+  gcode.push('G0 X0.0 Y0.0')
   gcode.push('')
 
-  // Process each step
-  steps.forEach((step, index) => {
-    if (step.penDown) {
-      // Move to start position
-      gcode.push(`G0 X${step.x1.toFixed(2)} Y${step.y1.toFixed(2)} Z${currentZ.toFixed(2)}`)
-      // Draw to end position
-      gcode.push(`G1 X${step.x2.toFixed(2)} Y${step.y2.toFixed(2)} Z${currentZ.toFixed(2)}`)
-      currentZ += 5
-    } else {
-      // Jump stitch - lift pen and move
-      gcode.push(`G0 X${step.x1.toFixed(2)} Y${step.y1.toFixed(2)} Z${currentZ.toFixed(2)}`)
-      gcode.push(`G0 X${step.x2.toFixed(2)} Y${step.y2.toFixed(2)} Z${currentZ.toFixed(2)}`)
-      currentZ += 5
-    }
+  //––– apply scale & emit moves
+  let currentZ = 0,
+    dz = 5
+  steps.forEach((s) => {
+    // translate to zero‐origin, then scale
+    const x = ((s.x2 - minX) * scale).toFixed(3)
+    const y = ((s.y2 - minY) * scale).toFixed(3)
+    gcode.push(`G0 X${x} Y${y}`)
+    currentZ += dz
+    gcode.push(`G0 Z${currentZ.toFixed(1)}`)
   })
 
-  // G-code footer
+  //––– footer
   gcode.push('')
-  gcode.push('G28 ; Home all axes')
-  gcode.push('M30 ; Program end')
+  gcode.push('G28')
+  gcode.push('M30')
 
   return gcode.join('\n')
 }
