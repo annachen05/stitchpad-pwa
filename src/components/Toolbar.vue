@@ -5,7 +5,6 @@
     <button @click="zoomIn">+</button>
     <button @click="zoomOut">-</button>
     <button @click="resetZoom" title="Reset Zoom (1:1)">🎯</button>
-    <!-- Add this -->
 
     <button
       id="jump-icon"
@@ -15,6 +14,7 @@
     >
       🐇 JUMP
     </button>
+
     <button
       id="interp-icon"
       :class="{ active: interpolate }"
@@ -24,62 +24,37 @@
       🔗 INT
     </button>
 
-    <button @click="$refs.unifiedInput.click()">Datei laden</button>
-    <input
-      type="file"
-      ref="unifiedInput"
-      @change="onUnifiedFileChange"
-      accept=".dst,image/*"
-      style="display: none"
-    />
+    <!-- Fix: Emit event properly -->
+    <button @click="showImportDialog">Import</button>
   </div>
 </template>
 
 <script setup>
 // filepath: c:\Users\annam\Desktop\stitchpad-pwa\src\components\Toolbar.vue
 import { useStitchStore } from '@/store/stitch'
-import { ref } from 'vue'
 import { useToggleFlags } from '@/composables/useToggleFlags'
 
 const store = useStitchStore()
-const showSaveDialog = ref(false)
-const emit = defineEmits(['toggle-jump'])
-
 const { jump, interpolate, toggleJump, toggleInterpolate } = useToggleFlags()
 
-// Updated zoom functions to use store scale management
+const emit = defineEmits(['show-import-dialog'])
+
+// Updated zoom functions
 function zoomIn() {
-  store.zoomIn(1.1) // 10% zoom in
+  store.zoomIn(1.1)
 }
 
 function zoomOut() {
-  store.zoomOut(0.9) // 10% zoom out
+  store.zoomOut(0.9)
 }
 
-// Add reset zoom function (optional)
 function resetZoom() {
   store.resetZoom()
 }
 
-function onUnifiedFileChange(e) {
-  const file = e.target.files[0]
-  if (!file) return
-
-  if (file.name.toLowerCase().endsWith('.dst')) {
-    store.importDST(file)
-    console.log('DST file imported:', file.name)
-  } else if (file.type.startsWith('image/')) {
-    const reader = new FileReader()
-    reader.onload = (evt) => {
-      store.setBackground(evt.target.result)
-      console.log('Background image loaded:', file.name)
-    }
-    reader.readAsDataURL(file)
-  } else {
-    alert('Please select a DST file (.dst) or an image file')
-  }
-
-  e.target.value = ''
+// Fix: Emit the event
+function showImportDialog() {
+  emit('show-import-dialog')
 }
 </script>
 

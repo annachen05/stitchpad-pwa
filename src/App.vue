@@ -10,8 +10,14 @@
       <ExportButtons />
     </div>
     <router-view />
-    <Toolbar />
+
+    <!-- Fix: Connect toolbar event properly -->
+    <Toolbar @show-import-dialog="showImportDialog = true" />
     <DrawingCanvas />
+
+    <!-- Import Dialog -->
+    <ImportDialog :show="showImportDialog" @close="showImportDialog = false" />
+
     <SaveDialog v-if="showSaveDialog" @close="showSaveDialog = false" />
     <AboutDialogue v-if="showAboutDialog" @close="showAboutDialog = false" />
     <button @click="showAboutDialog = true">Über</button>
@@ -25,22 +31,30 @@ import DrawingCanvas from './components/DrawingCanvas.vue'
 import ExportButtons from './components/ExportButtons.vue'
 import SaveDialog from './components/SaveDialog.vue'
 import AboutDialogue from './components/AboutDialogue.vue'
+import ImportDialog from './components/ImportDialog.vue'
 import { useStitchStore } from '@/store/stitch'
 import { saveAs } from 'file-saver'
 
 export default {
-  components: { Toolbar, DrawingCanvas, ExportButtons, SaveDialog, AboutDialogue },
+  components: {
+    Toolbar,
+    DrawingCanvas,
+    ExportButtons,
+    SaveDialog,
+    AboutDialogue,
+    ImportDialog,
+  },
   data() {
     return {
       showSaveDialog: false,
       showAboutDialog: false,
       sideToolbarOpen: true,
+      showImportDialog: false, // Make sure this is here
     }
   },
   setup() {
     const store = useStitchStore()
 
-    // Add exportGCode function to the side toolbar
     function exportGCode() {
       try {
         const gcode = store.exportGCode('my-design')
@@ -54,8 +68,6 @@ export default {
 
     return {
       store,
-      interpolate: store.interpolate,
-      toggleInterpolate: store.toggleInterpolate,
       exportGCode,
     }
   },

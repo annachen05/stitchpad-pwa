@@ -9,7 +9,8 @@ export const useStitchStore = defineStore('stitch', {
     isJump: false,
     interpolate: false,
     backgroundImage: null,
-    scale: 1, // Add scale state
+    backgroundScale: 1,
+    scale: 1,
   }),
 
   getters: {
@@ -30,6 +31,15 @@ export const useStitchStore = defineStore('stitch', {
 
     scaleAwareDotRadius: (state) => {
       return 2 / state.scale
+    },
+
+    // Background image with scaling
+    scaledBackgroundImage: (state) => {
+      if (!state.backgroundImage) return null
+      return {
+        url: state.backgroundImage,
+        scale: state.backgroundScale,
+      }
     },
   },
 
@@ -68,6 +78,15 @@ export const useStitchStore = defineStore('stitch', {
       this.backgroundImage = imageDataUrl
     },
 
+    setBackgroundScale(scale) {
+      this.backgroundScale = Math.max(0.1, Math.min(scale, 3))
+    },
+
+    clearBackground() {
+      this.backgroundImage = null
+      this.backgroundScale = 1
+    },
+
     // Add scale management
     setScale(newScale) {
       this.scale = Math.max(0.2, Math.min(newScale, 5))
@@ -78,14 +97,14 @@ export const useStitchStore = defineStore('stitch', {
     },
 
     zoomOut(factor = 0.9) {
-      this.setScale(this.scale * factor) // This is correct for zoom out
+      this.setScale(this.scale * factor)
     },
 
     resetZoom() {
       this.setScale(1)
     },
 
-    // Add this action to your store
+    // Fix: Make sure importDST method exists
     importDST(file) {
       const reader = new FileReader()
       reader.onload = (event) => {

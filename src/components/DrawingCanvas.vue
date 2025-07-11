@@ -9,14 +9,14 @@
     @dragover.prevent
     @drop="onDrop"
   >
-    <!-- Add background image -->
+    <!-- Updated background image with scaling -->
     <div
       v-if="store.backgroundImage"
       class="background-image"
       :style="{
         backgroundImage: 'url(' + store.backgroundImage + ')',
-        transform: 'scale(' + scale + ')',
-        transformOrigin: 'top left',
+        transform: `scale(${store.backgroundScale * scale})`,
+        transformOrigin: 'center center',
       }"
     ></div>
 
@@ -215,9 +215,9 @@ function handleKeydown(e) {
   left: 0;
   width: 100%;
   height: 100%;
-  background-size: cover;
+  background-size: contain; /* Changed from cover to contain for better scaling */
   background-repeat: no-repeat;
-  background-position: center;
+  background-position: center center; /* Center the image */
   z-index: 0;
   pointer-events: none;
 }
