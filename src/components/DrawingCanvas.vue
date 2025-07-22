@@ -58,7 +58,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useStitchStore } from '@/store/stitch'
-import { lineInterpolate } from '@/utils/embroidery'
+import { lineInterpolate } from '@/services'
 import { useToggleFlags } from '@/composables/useToggleFlags.js'
 
 const store = useStitchStore()

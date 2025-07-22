@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { TurtleShepherd, exportDST, exportEXP, exportSVG } from '@/lib/app.js'
-import { generateGCode } from '@/utils/exportUtils.js'
+import { generateGCode } from '@/utils'
 
 export const useStitchStore = defineStore('stitch', {
   state: () => ({
@@ -57,16 +57,54 @@ export const useStitchStore = defineStore('stitch', {
       this.shepherd.addPoint(x, y)
     },
     exportDST(name) {
-      return exportDST(this.shepherd, name)
+      try {
+        const data = exportDST(this.shepherd, name)
+        if (!data || data.length === 0) {
+          throw new Error('Export failed: No data generated')
+        }
+        return data
+      } catch (error) {
+        console.error('DST export failed:', error.message)
+        throw new Error(`DST export failed: ${error.message}`)
+      }
     },
+
     exportEXP() {
-      return exportEXP(this.shepherd)
+      try {
+        const data = exportEXP(this.shepherd)
+        if (!data || data.length === 0) {
+          throw new Error('Export failed: No data generated')
+        }
+        return data
+      } catch (error) {
+        console.error('EXP export failed:', error.message)
+        throw new Error(`EXP export failed: ${error.message}`)
+      }
     },
+
     exportSVG() {
-      return exportSVG(this.shepherd)
+      try {
+        const data = exportSVG(this.shepherd)
+        if (!data || data.length === 0) {
+          throw new Error('Export failed: No SVG data generated')
+        }
+        return data
+      } catch (error) {
+        console.error('SVG export failed:', error.message)
+        throw new Error(`SVG export failed: ${error.message}`)
+      }
     },
+
     exportGCode(name = 'design') {
-      return generateGCode(this.shepherd.steps, name)
+      try {
+        if (!this.shepherd.steps || this.shepherd.steps.length === 0) {
+          throw new Error('No design data to export')
+        }
+        return generateGCode(this.shepherd.steps, name)
+      } catch (error) {
+        console.error('G-code export failed:', error.message)
+        throw new Error(`G-code export failed: ${error.message}`)
+      }
     },
     toggleGrid() {
       this.grid = !this.grid

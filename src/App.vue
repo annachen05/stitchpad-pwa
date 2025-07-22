@@ -9,17 +9,18 @@
       <button @click="exportGCode" title="Export G-code">Export G-code</button>
       <ExportButtons />
     </div>
+
+    <!-- Behalte nur den router-view, entferne DrawingCanvas direkt -->
     <router-view />
 
     <!-- Fix: Connect toolbar event properly -->
     <Toolbar @show-import-dialog="showImportDialog = true" />
-    <DrawingCanvas />
 
     <!-- Import Dialog -->
     <ImportDialog :show="showImportDialog" @close="showImportDialog = false" />
 
     <SaveDialog v-if="showSaveDialog" @close="showSaveDialog = false" />
-    <AboutDialogue v-if="showAboutDialog" @close="showAboutDialog = false" />
+    <AboutDialog v-if="showAboutDialog" @close="showAboutDialog = false" />
     <button @click="showAboutDialog = true">Über</button>
   </div>
 </template>
@@ -27,10 +28,9 @@
 <script>
 // filepath: c:\Users\annam\Desktop\stitchpad-pwa\src\App.vue
 import Toolbar from './components/Toolbar.vue'
-import DrawingCanvas from './components/DrawingCanvas.vue'
 import ExportButtons from './components/ExportButtons.vue'
 import SaveDialog from './components/SaveDialog.vue'
-import AboutDialogue from './components/AboutDialogue.vue'
+import AboutDialog from './components/AboutDialog.vue'
 import ImportDialog from './components/ImportDialog.vue'
 import { useStitchStore } from '@/store/stitch'
 import { saveAs } from 'file-saver'
@@ -38,10 +38,9 @@ import { saveAs } from 'file-saver'
 export default {
   components: {
     Toolbar,
-    DrawingCanvas,
     ExportButtons,
     SaveDialog,
-    AboutDialogue,
+    AboutDialog,
     ImportDialog,
   },
   data() {

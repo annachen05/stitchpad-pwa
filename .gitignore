@@ -23,13 +23,21 @@ dist-ssr
 *.sln
 *.sw?
 
+# ESLint/Prettier cache
+.eslintcache
+.prettierrc.local
+
+# Dependency analysis
+.depcheckrc
+
 # Playwright
 /test-results/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
 
-# Test artifacts
-test-results/
-tests-examples/
+# Tests
+/tests/e2e/test-results/
+/tests/e2e/playwright-report/
+/tests/unit/coverage/
 

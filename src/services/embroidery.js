@@ -3,7 +3,7 @@
 // 1. Importiere TurtleShepherd aus dem third-party-Ordner
 import { TurtleShepherd, exportDST, exportEXP, exportSVG, importDST } from '@/lib/app.js'
 import { saveAs } from 'file-saver'
-import { validateDST, validateDSTStitches } from '@/utils/exportUtils'
+import { validateDST, validateDSTStitches } from '@/utils'
 
 /**
  * Speichert das aktuelle Design in dem gewählten Format.
@@ -103,4 +103,49 @@ export function lineInterpolate(point1, point2, distance, total) {
   result.push({ x: point2.x, y: point2.y })
 
   return result
+}
+
+/**
+ * Stream-basierter Export für große Dateien
+ * @param {string} format - Export format (dst, exp, svg)
+ * @param {string} name - Dateiname
+ * @param {TurtleShepherd} shepherd - Shepherd instance
+ */
+export async function streamExport(format, name, shepherd) {
+  try {
+    const chunks = []
+    const chunkSize = 1024 // 1KB chunks
+
+    switch (format) {
+      case 'dst':
+        const dstData = shepherd.toDST(name)
+        validateDST(dstData)
+
+        // Process in chunks for large files
+        for (let i = 0; i < dstData.length; i += chunkSize) {
+          const chunk = dstData.slice(i, i + chunkSize)
+          chunks.push(chunk)
+
+          // Yield control back to browser
+          await new Promise((resolve) => setTimeout(resolve, 0))
+        }
+
+        const blob = new Blob(chunks, { type: 'application/octet-stream' })
+        saveAs(blob, `${name}.dst`)
+        break
+
+      case 'svg':
+        const svgData = shepherd.toSVG()
+        const svgBlob = new Blob([svgData], { type: 'image/svg+xml' })
+        saveAs(svgBlob, `${name}.svg`)
+        break
+
+      default:
+        throw new Error(`Unsupported format: ${format}`)
+    }
+
+    return { success: true, message: `${format.toUpperCase()} export completed` }
+  } catch (error) {
+    return { success: false, message: error.message }
+  }
 }

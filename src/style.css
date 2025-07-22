@@ -68,10 +68,10 @@ button:focus-visible {
   text-align: center;
 }
 
-drawing-canvas, #stage {
+drawing-canvas, .drawing-canvas {
   position: relative;
   width: 100vw;
-  height: calc(100vh - 100px); /* 80px für Toolbar, ggf. anpassen */
+  height: calc(100vh - 100px);
   background: #fff;
   border: 1px solid #ccc;
   margin: 0 auto;
@@ -93,26 +93,6 @@ drawing-canvas, #stage {
   opacity: 0.7;
 }
 
-.drawing-canvas {
-  position: relative;
-  width: 100vw;
-  height: 80vh;
-  background: #fff;
-  border: 1px solid #ccc;
-  margin: 0 auto;
-  box-sizing: border-box;
-  overflow: hidden;
-}
-
-#stage {
-  width: 100%;
-  height: 100%;
-  position: absolute;
-  top: 0;
-  left: 0;
-  z-index: 0;
-}
-
 .export-bar {
   position: fixed;
   left: 0;
@@ -129,6 +109,46 @@ drawing-canvas, #stage {
   color: #fff;
   background: #5e5e5e;
   border: 1px solid #444;
+}
+
+.toolbar-bottom {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #222222;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  padding: 1.6rem 0;
+  z-index: 10; /* Reduce z-index to allow other elements to be clickable */
+  gap: 1rem;
+  border: none;
+}
+
+.about-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: #fff;
+  padding: 2rem;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000; /* Wichtig: Höher als alle anderen z-index-Werte */
+  min-width: 300px;
+  text-align: center;
+}
+
+.about-dialog button {
+  margin-top: 1rem;
+  padding: 0.5rem 1rem;
+  background-color: #7a0081;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
 }
 
 @media (prefers-color-scheme: light) {
