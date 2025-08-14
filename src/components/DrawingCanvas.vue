@@ -2,6 +2,7 @@
   <div
     ref="canvasRef"
     class="drawing-canvas"
+    :class="{ importing: isImporting }"
     @mousedown="onPointerDown"
     @mousemove="onPointerMove"
     @mouseup="onPointerUp"
@@ -9,13 +10,19 @@
     @dragover.prevent
     @drop="onDrop"
   >
+    <div v-if="isImporting" class="import-overlay">
+      <div class="import-message">
+        ⏳ Importing file...
+      </div>
+    </div>
+
     <!-- Updated background image with scaling -->
     <div
-      v-if="store.backgroundImage"
+      v-if="drawingStore.backgroundImage"
       class="background-image"
       :style="{
-        backgroundImage: 'url(' + store.backgroundImage + ')',
-        transform: `scale(${store.backgroundScale * scale})`,
+        backgroundImage: 'url(' + drawingStore.backgroundImage + ')',
+        transform: `scale(${drawingStore.backgroundScale * scale})`,
         transformOrigin: 'center center',
       }"
     ></div>
@@ -29,7 +36,7 @@
       <g>
         <!-- Render each step as individual line segments -->
         <line
-          v-for="(step, i) in store.shepherd.steps"
+          v-for="(step, i) in visibleSteps"
           :key="i"
           :x1="step.x1"
           :y1="step.y1"
@@ -41,7 +48,7 @@
         />
         <!-- Show interpolation points as purple dots -->
         <circle
-          v-for="(step, i) in store.shepherd.steps"
+          v-for="(step, i) in visibleSteps"
           :key="'pt-' + i"
           :cx="step.x2"
           :cy="step.y2"
@@ -51,38 +58,59 @@
         />
       </g>
     </svg>
-    <div v-if="store.grid" class="grid-overlay"></div>
+    <div v-if="uiStore.grid" class="grid-overlay"></div>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
-import { useStitchStore } from '@/store/stitch'
-import { lineInterpolate } from '@/services'
-import { useToggleFlags } from '@/composables/useToggleFlags.js'
+import { useDrawingStore } from '@/stores/drawing.js'
+import { useUIStore } from '@/stores/ui.js'
 
-const store = useStitchStore()
+const drawingStore = useDrawingStore()
+const uiStore = useUIStore()
 const canvasRef = ref(null)
 const width = window.innerWidth
 const height = window.innerHeight - 100
+const isImporting = ref(false)
 
 let drawing = false
 let lastPos = ref(null)
-const { jump, interpolate, toggleJump, toggleInterpolate } = useToggleFlags()
 
-// Base distance values (these represent "real" design units)
+// Base distance values
 const BASE_DIST_MIN = 8
 const BASE_DIST_MAX = 12
 const BASE_DOT_RADIUS = 2
 const BASE_LINE_WIDTH = 2
 
-// Get current scale from store
-const scale = computed(() => store.scale || 1)
+// Get current scale from drawingStore
+const scale = computed(() => drawingStore.scale || 1)
+
+// Simple line interpolation function (since we removed the import)
+function lineInterpolate(start, end, maxDistance) {
+  const dx = end.x - start.x
+  const dy = end.y - start.y
+  const distance = Math.sqrt(dx * dx + dy * dy)
+  
+  if (distance <= maxDistance) return [start, end]
+  
+  const steps = Math.ceil(distance / maxDistance)
+  const stepX = dx / steps
+  const stepY = dy / steps
+  const points = []
+  
+  for (let i = 0; i <= steps; i++) {
+    points.push({
+      x: start.x + stepX * i,
+      y: start.y + stepY * i
+    })
+  }
+  return points
+}
 
 // Scale-aware distance calculation
 function getScaleAwareDistances() {
   return {
-    dist_min: BASE_DIST_MIN / scale.value,
     dist_max: BASE_DIST_MAX / scale.value,
   }
 }
@@ -99,7 +127,6 @@ function getScaleAwareLineWidth(isPenDown) {
 
 // Scale-aware interpolation distance
 function getAdaptiveInterpolationDistance() {
-  // More dense interpolation when zoomed in, less dense when zoomed out
   return BASE_DIST_MIN / Math.sqrt(scale.value)
 }
 
@@ -117,13 +144,11 @@ function ensureConnectedPoints(pos) {
       Math.pow(lastPos.value.x - pos.x, 2) + Math.pow(lastPos.value.y - pos.y, 2)
     )
 
-    // Use scale-aware distances
-    const { dist_min, dist_max } = getScaleAwareDistances()
+    const { dist_max } = getScaleAwareDistances()
 
-    if (dist > dist_max && interpolate.value && !jump.value) {
-      // Use adaptive interpolation distance for better quality
+    if (dist > dist_max && uiStore.interpolate && !uiStore.isJump) {
       const adaptiveDistance = getAdaptiveInterpolationDistance()
-      const points = lineInterpolate(lastPos.value, pos, adaptiveDistance, dist)
+      const points = lineInterpolate(lastPos.value, pos, adaptiveDistance)
 
       // Connect each consecutive pair of points as separate lines
       for (let i = 0; i < points.length - 1; i++) {
@@ -143,11 +168,11 @@ function ensureConnectedPoints(pos) {
 }
 
 function addLine(pos1, pos2) {
-  if (jump.value) {
-    store.addLine(pos1.x, pos1.y, pos2.x, pos2.y, false)
-    toggleJump()
+  if (uiStore.isJump) {
+    drawingStore.addLine(pos1.x, pos1.y, pos2.x, pos2.y, false)
+    uiStore.toggleJump() // Toggle back to normal drawing
   } else {
-    store.addLine(pos1.x, pos1.y, pos2.x, pos2.y, true)
+    drawingStore.addLine(pos1.x, pos1.y, pos2.x, pos2.y, true)
   }
 }
 
@@ -170,35 +195,49 @@ function onPointerMove(e) {
   ensureConnectedPoints(pos)
 }
 
-function onPointerUp(e) {
+function onPointerUp() {
   drawing = false
   // Keep lastPos.value so the next stroke continues from here
-  // DON'T reset lastPos.value to null
-}
-const onDrop = (e) => {
-  const file = e.dataTransfer.files[0]
-  if (file) store.importDST(file)
 }
 
+const onDrop = async (event) => {
+  event.preventDefault()
+  const file = event.dataTransfer.files[0]
+  if (!file) return
+
+  try {
+    isImporting.value = true
+    await drawingStore.importDST(file)
+  } catch (error) {
+    console.error('Import failed:', error)
+    alert('Import failed: ' + error.message)
+  } finally {
+    isImporting.value = false
+  }
+}
+
+// Virtualize large step lists
+const visibleSteps = computed(() => {
+  if (drawingStore.shepherd.steps.length > 1000) {
+    // Only render visible steps for performance
+    return drawingStore.shepherd.steps.slice(0, 1000)
+  }
+  return drawingStore.shepherd.steps
+})
+
 onMounted(() => {
-  window.addEventListener('keydown', handleKeydown)
-  if (store.shepherd && typeof store.shepherd.zoom === 'function') {
-    store.shepherd.zoom = (factor) => {
+  window.addEventListener('keydown', uiStore.handleKeydown)
+  if (drawingStore.shepherd && typeof drawingStore.shepherd.zoom === 'function') {
+    drawingStore.shepherd.zoom = (factor) => {
       const newScale = Math.max(0.2, Math.min(scale.value * factor, 5))
-      store.setScale(newScale)
+      drawingStore.setScale(newScale)
     }
   }
 })
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeydown)
+  window.removeEventListener('keydown', uiStore.handleKeydown)
 })
-
-function handleKeydown(e) {
-  if (e.key === 'j') toggleJump()
-  if (e.key === 'i') toggleInterpolate()
-  console.log('Keydown Event Registered:', handleKeydown)
-}
 </script>
 
 <style scoped>
@@ -215,9 +254,9 @@ function handleKeydown(e) {
   left: 0;
   width: 100%;
   height: 100%;
-  background-size: contain; /* Changed from cover to contain for better scaling */
+  background-size: contain;
   background-repeat: no-repeat;
-  background-position: center center; /* Center the image */
+  background-position: center center;
   z-index: 0;
   pointer-events: none;
 }
@@ -228,7 +267,24 @@ svg {
   z-index: 1;
 }
 
-canvas {
-  border: 1px solid #ccc;
+.import-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.import-message {
+  background: white;
+  padding: 2rem;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  font-size: 1.2rem;
 }
 </style>

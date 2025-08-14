@@ -1,2 +1,2 @@
 // Barrel file for services
-export { saveDesign, importDSTFile, lineInterpolate, streamExport } from './embroidery.js'
+export { saveDesign, lineInterpolate, streamExport } from './embroidery.js'

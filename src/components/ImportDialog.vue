@@ -4,10 +4,17 @@
       <h3>Import & Background</h3>
 
       <!-- File Upload Section -->
-      <div class="upload-section">
+      <div 
+        class="upload-section"
+        :class="{ 'drag-over': isDragOver }"
+        @dragenter.prevent="onDragEnter"
+        @dragover.prevent="onDragOver"
+        @dragleave.prevent="onDragLeave"
+        @drop.prevent="onDrop"
+      >
         <div class="upload-button" @click="triggerFileInput">
-          <div class="upload-icon">⬆</div>
-          <span>Select File</span>
+          <div class="upload-icon">{{ isDragOver ? '⬇' : '⬆' }}</div>
+          <span>{{ isDragOver ? 'Drop file here' : 'Select File or Drop Here' }}</span>
         </div>
         <input
           ref="fileInput"
@@ -22,13 +29,13 @@
       <!-- Current Files Section -->
       <div class="current-files">
         <!-- Background Image -->
-        <div v-if="store.backgroundImage" class="file-item">
+        <div v-if="drawingStore.backgroundImage" class="file-item">
           <div class="file-preview">
-            <img :src="store.backgroundImage" alt="Background" class="preview-thumb" />
+            <img :src="drawingStore.backgroundImage" alt="Background" class="preview-thumb" />
           </div>
           <div class="file-info">
             <strong>Background Image</strong>
-            <p>Scale: {{ (store.backgroundScale * 100).toFixed(0) }}%</p>
+            <p>Scale: {{ (drawingStore.backgroundScale * 100).toFixed(0) }}%</p>
           </div>
           <div class="file-actions">
             <button @click="removeBackground" class="remove-btn">Remove</button>
@@ -42,7 +49,7 @@
           </div>
           <div class="file-info">
             <strong>DST Design</strong>
-            <p>{{ store.shepherd.steps.length }} stitches</p>
+            <p>{{ drawingStore.shepherd.steps.length }} stitches</p>
           </div>
           <div class="file-actions">
             <button @click="removeDesign" class="remove-btn">Remove</button>
@@ -50,13 +57,13 @@
         </div>
 
         <!-- Empty state -->
-        <div v-if="!store.backgroundImage && !hasDesign" class="empty-state">
+        <div v-if="!drawingStore.backgroundImage && !hasDesign" class="empty-state">
           <p>No files imported</p>
         </div>
       </div>
 
-      <!-- Background Scale Controls (only show if background exists) -->
-      <div v-if="store.backgroundImage" class="scale-controls">
+      <!-- Background Scale Controls -->
+      <div v-if="drawingStore.backgroundImage" class="scale-controls">
         <h4>Background Scale</h4>
         <div class="scale-slider">
           <label>
@@ -87,11 +94,10 @@
 </template>
 
 <script setup>
-// filepath: c:\Users\annam\Desktop\stitchpad-pwa\src\components\ImportDialog.vue
 import { ref, computed, watch } from 'vue'
-import { useStitchStore } from '@/store/stitch'
+import { useDrawingStore } from '@/stores/drawing.js'
 
-const props = defineProps({
+defineProps({
   show: {
     type: Boolean,
     default: false,
@@ -100,27 +106,28 @@ const props = defineProps({
 
 const emit = defineEmits(['close'])
 
-const store = useStitchStore()
+const drawingStore = useDrawingStore()
 const fileInput = ref(null)
 const imageScale = ref(1)
 const zoomToFit = ref(false)
+const isDragOver = ref(false)
 
 // Check if there's a design loaded
-const hasDesign = computed(() => store.shepherd.steps.length > 0)
+const hasDesign = computed(() => drawingStore.shepherd.steps.length > 0)
 
 // Watch for background changes
 watch(
-  () => store.backgroundImage,
+  () => drawingStore.backgroundImage,
   (newImage) => {
     if (newImage) {
-      imageScale.value = store.backgroundScale
+      imageScale.value = drawingStore.backgroundScale
     }
   }
 )
 
 // Watch for scale changes
 watch(
-  () => store.backgroundScale,
+  () => drawingStore.backgroundScale,
   (newScale) => {
     imageScale.value = newScale
   }
@@ -130,19 +137,18 @@ function triggerFileInput() {
   fileInput.value?.click()
 }
 
-function handleFileUpload(event) {
-  const file = event.target.files[0]
+function processFile(file) {
   if (!file) return
 
   if (file.name.toLowerCase().endsWith('.dst')) {
     // Handle DST files
-    store.importDST(file)
+    drawingStore.importDST(file)
     console.log('DST file imported:', file.name)
   } else if (file.type.startsWith('image/')) {
     // Handle image files
     const reader = new FileReader()
     reader.onload = (e) => {
-      store.setBackground(e.target.result)
+      drawingStore.setBackground(e.target.result)
       imageScale.value = 1
       zoomToFit.value = false
       console.log('Background image loaded:', file.name)
@@ -151,23 +157,57 @@ function handleFileUpload(event) {
   } else {
     alert('Please select a DST file (.dst) or an image file')
   }
+}
 
+function handleFileUpload(event) {
+  const file = event.target.files[0]
+  processFile(file)
+  
   // Reset file input
   event.target.value = ''
 }
 
+// Drag and drop event handlers
+function onDragEnter(event) {
+  event.preventDefault()
+  isDragOver.value = true
+}
+
+function onDragOver(event) {
+  event.preventDefault()
+  isDragOver.value = true
+}
+
+function onDragLeave(event) {
+  event.preventDefault()
+  // Only set to false if we're actually leaving the drop zone
+  if (!event.currentTarget.contains(event.relatedTarget)) {
+    isDragOver.value = false
+  }
+}
+
+function onDrop(event) {
+  event.preventDefault()
+  isDragOver.value = false
+  
+  const files = event.dataTransfer.files
+  if (files.length > 0) {
+    processFile(files[0])
+  }
+}
+
 function removeBackground() {
-  store.clearBackground()
+  drawingStore.clearBackground()
   imageScale.value = 1
   zoomToFit.value = false
 }
 
 function removeDesign() {
-  store.clear()
+  drawingStore.clear()
 }
 
 function calculateZoomToFit() {
-  if (!store.backgroundImage) return
+  if (!drawingStore.backgroundImage) return
 
   const img = new Image()
   img.onload = () => {
@@ -181,14 +221,14 @@ function calculateZoomToFit() {
     imageScale.value = fitScale
     updateImageScale()
   }
-  img.src = store.backgroundImage
+  img.src = drawingStore.backgroundImage
 }
 
 function updateImageScale() {
   if (zoomToFit.value) {
     calculateZoomToFit()
   } else {
-    store.setBackgroundScale(imageScale.value)
+    drawingStore.setBackgroundScale(imageScale.value)
   }
 }
 
@@ -237,6 +277,13 @@ function closeDialog() {
   border: 2px dashed #ddd;
   border-radius: 8px;
   background-color: #f9f9f9;
+  transition: all 0.3s ease;
+}
+
+.upload-section.drag-over {
+  border-color: #7a0081;
+  background-color: #f0e6f7;
+  transform: scale(1.02);
 }
 
 .upload-button {
@@ -247,16 +294,15 @@ function closeDialog() {
   padding: 1rem;
   cursor: pointer;
   transition: all 0.3s ease;
-  color: #666; /* Add this line for default color */
+  color: #666;
 }
 
 .upload-button:hover {
-  color: #7a0081; /* This changes color on hover */
+  color: #7a0081;
 }
 
-.upload-icon {
-  font-size: 2rem;
-  color: #bababa;
+.upload-section.drag-over .upload-button {
+  color: #7a0081;
 }
 
 .file-info {

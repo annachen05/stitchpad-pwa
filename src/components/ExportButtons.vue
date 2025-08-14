@@ -1,9 +1,8 @@
 <script setup>
-import { useStitchStore } from '@/store/stitch'
-import { saveAs } from 'file-saver'
+import { useDrawingStore } from '@/stores/drawing.js'
 import { ref } from 'vue'
 
-const store = useStitchStore()
+const drawingStore = useDrawingStore()
 const isExporting = ref(false)
 const exportStatus = ref('')
 
@@ -14,9 +13,8 @@ async function saveDST() {
     isExporting.value = true
     exportStatus.value = 'Exporting DST...'
 
-    const data = store.exportDST('design')
-    const blob = new Blob([data], { type: 'application/octet-stream' })
-    saveAs(blob, 'design.dst')
+    // Add the missing export call
+    await drawingStore.exportDST('design')
 
     exportStatus.value = 'DST export successful!'
     setTimeout(() => (exportStatus.value = ''), 3000)
@@ -35,9 +33,8 @@ async function saveEXP() {
     isExporting.value = true
     exportStatus.value = 'Exporting EXP...'
 
-    const data = store.exportEXP()
-    const blob = new Blob([data], { type: 'application/octet-stream' })
-    saveAs(blob, 'design.exp')
+    // Add the missing export call
+    await drawingStore.exportEXP('design')
 
     exportStatus.value = 'EXP export successful!'
     setTimeout(() => (exportStatus.value = ''), 3000)
@@ -56,9 +53,8 @@ async function saveSVG() {
     isExporting.value = true
     exportStatus.value = 'Exporting SVG...'
 
-    const data = store.exportSVG()
-    const blob = new Blob([data], { type: 'image/svg+xml' })
-    saveAs(blob, 'design.svg')
+    // Add the missing export call
+    await drawingStore.exportSVG('design')
 
     exportStatus.value = 'SVG export successful!'
     setTimeout(() => (exportStatus.value = ''), 3000)
@@ -73,20 +69,17 @@ async function saveSVG() {
 
 <template>
   <div class="export-buttons">
-    <button @click="saveDST" :disabled="isExporting">
+    <button class="btn btn-primary" @click="saveDST" :disabled="isExporting">
       {{ isExporting ? 'Exporting...' : 'Export DST' }}
     </button>
-    <button @click="saveEXP" :disabled="isExporting">
+    <button class="btn btn-primary" @click="saveEXP" :disabled="isExporting">
       {{ isExporting ? 'Exporting...' : 'Export EXP' }}
     </button>
-    <button @click="saveSVG" :disabled="isExporting">
+    <button class="btn btn-primary" @click="saveSVG" :disabled="isExporting">
       {{ isExporting ? 'Exporting...' : 'Export SVG' }}
     </button>
-    <div
-      v-if="exportStatus"
-      class="export-status"
-      :class="{ error: exportStatus.includes('failed') }"
-    >
+    
+    <div v-if="exportStatus" class="export-status" :class="{ error: exportStatus.includes('failed') }">
       {{ exportStatus }}
     </div>
   </div>

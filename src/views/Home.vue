@@ -4,13 +4,6 @@
   </div>
 </template>
 
-<script>
+<script setup>
 import DrawingCanvas from '@/components/DrawingCanvas.vue'
-
-export default {
-  name: 'Home',
-  components: {
-    DrawingCanvas
-  }
-}
 </script>

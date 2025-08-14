@@ -118,7 +118,8 @@ class TurtleShepherd {
     return `${svgHeader}${svgContent}${svgFooter}`
   }
   fromDST(content) {
-    const header = content.slice(0, 512) // Extract header
+    // Remove unused header variable
+    content.slice(0, 512) // Just slice without assigning to header
     const stitches = content.slice(512, -3) // Extract stitches (excluding EOF marker)
 
     this.steps = []
@@ -145,10 +146,50 @@ class TurtleShepherd {
   normalize() {
     // TODO: Implement normalization logic
   }
-  zoom(factor) {
-    // Placeholder: Implement zoom logic for your drawing surface here
-    // Example: this.scale *= factor;
-    // You must implement the actual zoom/render logic in your canvas/drawing code
+  zoom(factor = 1.0) {
+    if (factor <= 0) {
+      throw new Error('Zoom factor must be positive')
+    }
+
+    // Scale all existing steps
+    this.steps = this.steps.map((step) => ({
+      x1: step.x1 * factor,
+      y1: step.y1 * factor,
+      x2: step.x2 * factor,
+      y2: step.y2 * factor,
+      penDown: step.penDown,
+    }))
+
+    // Update max dimensions
+    this.maxX *= factor
+    this.maxY *= factor
+
+    // Update current position
+    this.currentX *= factor
+    this.currentY *= factor
+
+    // Recalculate actual max values to ensure accuracy
+    if (this.steps.length > 0) {
+      this.maxX = Math.max(...this.steps.map((s) => Math.max(s.x1, s.x2)))
+      this.maxY = Math.max(...this.steps.map((s) => Math.max(s.y1, s.y2)))
+    }
+
+    return this // Allow method chaining
+  }
+
+  // Helper methods for common zoom operations
+  zoomIn(factor = 1.25) {
+    return this.zoom(factor)
+  }
+
+  zoomOut(factor = 0.8) {
+    return this.zoom(factor)
+  }
+
+  resetZoom() {
+    // This would require storing original coordinates or a base scale
+    // For now, we'll just normalize to a standard size
+    return this.normalize()
   }
 }
 

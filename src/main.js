@@ -15,7 +15,6 @@ app.use(router)
 const updateSW = registerSW({
   onNeedRefresh() {
     console.log('PWA update available')
-    // Optional: Show update notification to user
     if (confirm('App update available. Reload to apply?')) {
       updateSW(true)
     }

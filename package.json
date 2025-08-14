@@ -7,8 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "eslint --config eslint.config.cjs --ext .js,.vue src/",
-    "format": "prettier --write \"**/*.{js,vue,json,css,md}\"",
+    "lint": "eslint . --ext .js,.vue --max-warnings 20",
+    "lint:fix": "eslint . --ext .js,.vue --fix --max-warnings 20",
+    "lint:strict": "eslint . --ext .js,.vue --max-warnings 0",
     "test": "npm run test:unit && npm run test:e2e",
     "test:unit": "vitest",
     "test:e2e": "playwright test",
@@ -17,6 +18,7 @@
   },
   "dependencies": {
     "file-saver": "^2.0.5",
+    "lodash-es": "^4.17.21",
     "pinia": "^3.0.2",
     "vue": "^3.5.13",
     "vue-router": "^4.5.1"

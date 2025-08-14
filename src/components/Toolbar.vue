@@ -1,15 +1,16 @@
 <template>
   <div class="toolbar toolbar-bottom">
-    <button @click="store.undo">Undo</button>
-    <button @click="store.toggleGrid">Grid</button>
-    <button @click="zoomIn">+</button>
-    <button @click="zoomOut">-</button>
-    <button @click="resetZoom" title="Reset Zoom (1:1)">🎯</button>
+    <button class="btn btn-toolbar" @click="drawingStore.undo">Undo</button>
+    <button class="btn btn-toolbar" @click="uiStore.toggleGrid">Grid</button>
+    <button class="btn btn-toolbar" @click="zoomIn">+</button>
+    <button class="btn btn-toolbar" @click="zoomOut">-</button>
+    <button class="btn btn-toolbar" @click="resetZoom" title="Reset Zoom (1:1)">🎯</button>
 
     <button
       id="jump-icon"
-      :class="{ active: jump }"
-      @click="toggleJump"
+      class="btn btn-toolbar"
+      :class="{ active: uiStore.isJump }"
+      @click="uiStore.toggleJump"
       title="Toggle Jump (Shortcut: J)"
     >
       🐇 JUMP
@@ -17,39 +18,39 @@
 
     <button
       id="interp-icon"
-      :class="{ active: interpolate }"
-      @click="toggleInterpolate"
+      class="btn btn-toolbar"
+      :class="{ active: uiStore.interpolate }"
+      @click="uiStore.toggleInterpolate"
       title="Toggle Interpolate (Shortcut: I)"
     >
       🔗 INT
     </button>
 
-    <!-- Fix: Emit event properly -->
-    <button @click="showImportDialog">Import</button>
+    <button class="btn btn-toolbar" @click="showImportDialog">Import</button>
   </div>
 </template>
 
 <script setup>
 // filepath: c:\Users\annam\Desktop\stitchpad-pwa\src\components\Toolbar.vue
-import { useStitchStore } from '@/store/stitch'
-import { useToggleFlags } from '@/composables/useToggleFlags'
+import { useDrawingStore } from '@/stores/drawing.js'
+import { useUIStore } from '@/stores/ui.js'
 
-const store = useStitchStore()
-const { jump, interpolate, toggleJump, toggleInterpolate } = useToggleFlags()
+const drawingStore = useDrawingStore()
+const uiStore = useUIStore()
 
 const emit = defineEmits(['show-import-dialog'])
 
 // Updated zoom functions
 function zoomIn() {
-  store.zoomIn(1.1)
+  drawingStore.zoomIn(1.1)
 }
 
 function zoomOut() {
-  store.zoomOut(0.9)
+  drawingStore.zoomOut(0.9)
 }
 
 function resetZoom() {
-  store.resetZoom()
+  drawingStore.resetZoom()
 }
 
 // Fix: Emit the event

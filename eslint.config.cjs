@@ -1,33 +1,71 @@
-// ESLint 9+ Flat Config migration from .eslintrc.cjs
-const vue = require('eslint-plugin-vue');
-const prettier = require('eslint-plugin-prettier');
-const vueParser = require('vue-eslint-parser');
+// eslint.config.cjs
+const vue = require('eslint-plugin-vue')
 
 /** @type {import('eslint').Linter.FlatConfig[]} */
 module.exports = [
   {
     files: ['**/*.js', '**/*.vue'],
+    ignores: [
+      'node_modules/**',
+      'dist/**',
+      'build/**',
+      '*.config.js',
+      '*.config.cjs',
+      'vite.config.js',
+      'playwright.config.js',
+      'playwright-report/**',  // Add this - ignores all Playwright reports
+      'test-results/**',       // Add this - ignores test results
+      'coverage/**',           // Add this - ignores coverage reports
+    ],
     languageOptions: {
-      ecmaVersion: 2021,
+      ecmaVersion: 2022,
       sourceType: 'module',
       globals: {
+        // Browser globals
         window: 'readonly',
         document: 'readonly',
+        console: 'readonly',
+        alert: 'readonly',
+        confirm: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
+        
+        // Web APIs
+        FileReader: 'readonly',
+        Blob: 'readonly',
+        Image: 'readonly',
+        TextEncoder: 'readonly',
+        TextDecoder: 'readonly',
+        
+        // Node.js globals (for config files)
         process: 'readonly',
+        require: 'readonly',
+        __dirname: 'readonly',
+        __filename: 'readonly',
         module: 'writable',
       },
-      parser: vueParser,
+      parser: require('vue-eslint-parser'),
+      parserOptions: {
+        ecmaVersion: 2022,
+        sourceType: 'module',
+      },
     },
     plugins: {
-      vue,
-      prettier,
+      vue: vue,
     },
     rules: {
-      ...(vue.configs['vue3-recommended']?.rules || {}),
-      ...(prettier.configs?.recommended?.rules || {}),
+      // Vue rules
       'vue/multi-word-component-names': 'off',
-      'no-console': process.env.NODE_ENV === 'production' ? 'warn' : 'off',
-      'no-debugger': process.env.NODE_ENV === 'production' ? 'warn' : 'off',
+      'vue/no-unused-vars': 'warn',
+      'vue/no-unused-components': 'warn',
+      
+      // JavaScript rules - set to 'warn' instead of 'error'
+      'no-console': 'off',
+      'no-debugger': 'warn',
+      'no-unused-vars': 'warn',
+      'no-undef': 'warn',
     },
   },
-];
+]

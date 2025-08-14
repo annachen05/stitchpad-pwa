@@ -1,27 +1,30 @@
 <template>
   <div id="app">
-    <button class="toolbar-toggle" @click="sideToolbarOpen = !sideToolbarOpen">
-      {{ sideToolbarOpen ? '⮜' : '⮞' }}
+    <!-- Use uiStore for sideToolbarOpen instead of local data -->
+    <button class="toolbar-toggle" @click="uiStore.toggleSideToolbar()">
+      {{ uiStore.sideToolbarOpen ? '⮜' : '⮞' }}
     </button>
-    <div class="side-toolbar" :class="{ closed: !sideToolbarOpen }">
-      <button @click="showSaveDialog = true">Speichern</button>
-      <button @click="store.clear">Neu</button>
-      <button @click="exportGCode" title="Export G-code">Export G-code</button>
+    <div class="side-toolbar" :class="{ closed: !uiStore.sideToolbarOpen }">
+      <button class="btn btn-toolbar" @click="showSaveDialog = true">Speichern</button>
+      <button class="btn btn-toolbar" @click="drawingStore.clear">Neu</button>
+      <button class="btn btn-toolbar" @click="exportGCode" :disabled="isExportingGCode" title="Export G-code">
+        {{ isExportingGCode ? '⏳' : 'Export G-code' }}
+      </button>
       <ExportButtons />
     </div>
 
-    <!-- Behalte nur den router-view, entferne DrawingCanvas direkt -->
     <router-view />
 
-    <!-- Fix: Connect toolbar event properly -->
     <Toolbar @show-import-dialog="showImportDialog = true" />
-
-    <!-- Import Dialog -->
     <ImportDialog :show="showImportDialog" @close="showImportDialog = false" />
-
     <SaveDialog v-if="showSaveDialog" @close="showSaveDialog = false" />
     <AboutDialog v-if="showAboutDialog" @close="showAboutDialog = false" />
-    <button @click="showAboutDialog = true">Über</button>
+    <button class="btn btn-primary" @click="showAboutDialog = true">Über</button>
+
+    <div v-if="error" class="error-toast">
+      {{ error }}
+      <button @click="error = null">×</button>
+    </div>
   </div>
 </template>
 
@@ -32,8 +35,9 @@ import ExportButtons from './components/ExportButtons.vue'
 import SaveDialog from './components/SaveDialog.vue'
 import AboutDialog from './components/AboutDialog.vue'
 import ImportDialog from './components/ImportDialog.vue'
-import { useStitchStore } from '@/store/stitch'
-import { saveAs } from 'file-saver'
+import { useDrawingStore } from '@/stores/drawing.js'
+import { useUIStore } from '@/stores/ui.js'
+import { ref } from 'vue'
 
 export default {
   components: {
@@ -47,26 +51,42 @@ export default {
     return {
       showSaveDialog: false,
       showAboutDialog: false,
-      sideToolbarOpen: true,
-      showImportDialog: false, // Make sure this is here
+      showImportDialog: false,
+      error: null,
     }
   },
   setup() {
-    const store = useStitchStore()
+    const drawingStore = useDrawingStore()
+    const uiStore = useUIStore()
+    const error = ref(null)
+    const isExportingGCode = ref(false)
 
-    function exportGCode() {
+    async function exportGCode() {
+      if (isExportingGCode.value) return
+
       try {
-        const gcode = store.exportGCode('my-design')
-        const blob = new Blob([gcode], { type: 'text/plain' })
-        saveAs(blob, 'design.gcode')
+        isExportingGCode.value = true
+        await drawingStore.exportGCode('my-design')
       } catch (error) {
         console.error('G-code export failed:', error)
+
         alert('Failed to export G-code: ' + error.message)
+      } finally {
+        isExportingGCode.value = false
       }
     }
 
+    function showError(message) {
+      error.value = message
+      setTimeout(() => (error.value = null), 5000)
+    }
+
     return {
-      store,
+      drawingStore,
+      uiStore,
+      error,
+      isExportingGCode,
+      showError,
       exportGCode,
     }
   },
@@ -79,7 +99,7 @@ export default {
   top: 0;
   left: 0;
   height: 100vh;
-  width: 120px;
+  width: 150px;
   background: #222;
   display: flex;
   flex-direction: column;
@@ -98,7 +118,7 @@ export default {
 .toolbar-toggle {
   position: fixed;
   top: 1rem;
-  left: 120px;
+  left: 150px;
   z-index: 20;
   background: #7a0081;
   color: #fff;
@@ -129,5 +149,25 @@ export default {
 }
 .side-toolbar .export-bar {
   margin-top: 2rem;
+}
+.error-toast {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  background: #f44336;
+  color: white;
+  padding: 1rem;
+  border-radius: 5px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+}
+.error-toast button {
+  margin-left: 1rem;
+  background: none;
+  border: none;
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
 }
 </style>
