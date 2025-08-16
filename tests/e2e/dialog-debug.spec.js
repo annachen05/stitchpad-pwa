@@ -1,10 +1,11 @@
 import { test, expect } from '@playwright/test'
 
-test('should find and click the Über button', async ({ page }) => {
+test('should find and click the About button', async ({ page }) => {
   await page.goto('/')
   await page.waitForLoadState('networkidle')
   
-  const aboutButton = page.locator('button', { hasText: 'Über' })
+  // Update locator to use 'About'
+  const aboutButton = page.getByRole('button', { name: 'About' })
   await expect(aboutButton).toBeVisible()
   
   // Just verify we can click without errors
@@ -17,7 +18,7 @@ test('should find and click the Über button', async ({ page }) => {
       aboutDialogExists: document.querySelector('.about-dialog') !== null,
       buttons: Array.from(document.querySelectorAll('button')).map(b => b.textContent),
       dialogsFound: Array.from(document.querySelectorAll('div')).filter(d => 
-        d.textContent.includes('Schließen') || 
+        d.textContent.includes('Close') || 
         d.className.includes('dialog') || 
         d.className.includes('dialogue')
       ).map(el => ({ class: el.className, visible: el.offsetParent !== null }))

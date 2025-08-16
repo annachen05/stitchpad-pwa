@@ -228,10 +228,7 @@ const onDrop = async (event) => {
 
 // Virtualize large step lists
 const visibleSteps = computed(() => {
-  if (drawingStore.shepherd.steps.length > 1000) {
-    // Only render visible steps for performance
-    return drawingStore.shepherd.steps.slice(0, 1000)
-  }
+  // Be aware that very large designs (>10,000 steps) might impact performance.
   return drawingStore.shepherd.steps
 })
 

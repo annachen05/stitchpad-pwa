@@ -11,6 +11,7 @@
         {{ isExportingGCode ? '⏳' : 'Export G-code' }}
       </button>
       <ExportButtons />
+      <button class="btn btn-toolbar" @click="showAboutDialog = true">About</button>
     </div>
 
     <router-view />
@@ -19,7 +20,6 @@
     <ImportDialog :show="isImportDialogVisible" @close="isImportDialogVisible = false" />
     <SaveDialog v-if="showSaveDialog" @close="showSaveDialog = false" />
     <AboutDialog v-if="showAboutDialog" @close="showAboutDialog = false" />
-    <button class="btn btn-primary" @click="showAboutDialog = true">About</button>
 
     <!-- Updated Toast Notification -->
     <div v-if="toastStore.visible" :class="['toast-notification', toastStore.type]">

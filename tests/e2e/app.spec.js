@@ -48,7 +48,8 @@ test('should show main toolbar buttons', async ({ page }) => {
   await expect(page.locator('button', { hasText: 'Undo' })).toBeVisible()
   await expect(page.locator('button', { hasText: 'Grid' })).toBeVisible()
   await expect(page.locator('button', { hasText: 'Import' })).toBeVisible()
-  await expect(page.locator('button', { hasText: 'Über' })).toBeVisible()
+  // Change "Über" to "About"
+  await expect(page.locator('button', { hasText: 'About' })).toBeVisible()
 })
 
 test('should toggle side toolbar', async ({ page }) => {
@@ -133,11 +134,12 @@ test('should handle side toolbar interactions', async ({ page }) => {
   await page.waitForTimeout(500)
 })
 
-test('should find and click the Über button', async ({ page }) => {
+test('should find and click the About button', async ({ page }) => {
   await page.goto('/')
   await page.waitForLoadState('networkidle')
   
-  const aboutButton = page.locator('button', { hasText: 'Über' })
+  // Use getByRole for better semantics and update text to "About"
+  const aboutButton = page.getByRole('button', { name: 'About' })
   await expect(aboutButton).toBeVisible()
   
   // Just verify we can click without errors

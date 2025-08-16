@@ -15,16 +15,16 @@ test('debug about dialog', async ({ page }) => {
   await page.screenshot({ path: 'debug-before.png', fullPage: true })
   
   // Try to find the button with flexible localization
-  console.log('Looking for different selectors for Über button')
+  console.log('Looking for different selectors for About button')
   
+  // Update selectors to look for "About"
   const selectors = [
-    'button:has-text("Über")',
-    'text="Über"',
-    '[data-test="about-button"]',
+    'button:has-text("About")',
+    'text="About"',
+    '[data-test="about-button"]', // Keep this for a potential future data-test-id
     'button[title*="About"]',
-    'button:contains("Über")'
   ]
-
+  
   for (const selector of selectors) {
     const element = page.locator(selector)
     const count = await element.count()
