@@ -87,6 +87,7 @@
 
       <!-- Dialog Buttons -->
       <div class="dialog-buttons">
+        <button @click="clearAll" class="remove-btn">Clear All</button>
         <button @click="closeDialog" class="close-btn">Close</button>
       </div>
     </div>
@@ -204,6 +205,11 @@ function removeBackground() {
 
 function removeDesign() {
   drawingStore.clear()
+}
+
+function clearAll() {
+  removeBackground();
+  removeDesign();
 }
 
 function calculateZoomToFit() {

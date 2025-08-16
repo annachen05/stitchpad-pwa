@@ -1,13 +1,15 @@
 import { defineStore } from 'pinia'
 import { TurtleShepherd } from '@/lib/app.js'
 import { ExportService } from '@/services/exportService.js'
+import { MACHINE_CONFIG } from '@/config/machine.js'
 
 export const useDrawingStore = defineStore('drawing', {
   state: () => ({
-    shepherd: new TurtleShepherd(),
+    shepherd: new TurtleShepherd(MACHINE_CONFIG.maxX, MACHINE_CONFIG.maxY),
     scale: 1,
     backgroundImage: null,
     backgroundScale: 1,
+    stitchType: 'running',
   }),
 
   getters: {
@@ -42,6 +44,10 @@ export const useDrawingStore = defineStore('drawing', {
     // Drawing actions
     clear() {
       this.shepherd.clear()
+      // Reset the drawing state completely
+      this.scale = 1
+      this.backgroundImage = null
+      this.backgroundScale = 1
     },
 
     undo() {
@@ -121,6 +127,11 @@ export const useDrawingStore = defineStore('drawing', {
         }
       }
       reader.readAsArrayBuffer(file)
+    },
+
+    setStitchType(type) { 
+      this.stitchType = type;
+      console.log(`Stitch type set to: ${type}`);
     },
   },
 })

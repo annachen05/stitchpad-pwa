@@ -63,7 +63,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useDrawingStore } from '@/stores/drawing.js'
 import { useUIStore } from '@/stores/ui.js'
 
@@ -76,6 +76,16 @@ const isImporting = ref(false)
 
 let drawing = false
 let lastPos = ref(null)
+
+// Add this watcher to reset the last position when the canvas is cleared
+watch(
+  () => drawingStore.shepherd.steps.length,
+  (newLength) => {
+    if (newLength === 0) {
+      lastPos.value = null
+    }
+  }
+)
 
 // Base distance values
 const BASE_DIST_MIN = 8

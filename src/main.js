@@ -3,11 +3,21 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import { createPinia } from 'pinia'
 import router from './router'
+import { useToastStore } from '@/stores/toast.js'
 
 // PWA Service Worker Registration
 import { registerSW } from 'virtual:pwa-register'
 
 const app = createApp(App)
+
+// Global Error Handler
+app.config.errorHandler = (err, instance, info) => {
+  console.error("Unhandled error:", err);
+  console.error("Vue instance:", instance);
+  console.error("Error info:", info);
+  useToastStore().showError('An unexpected error occurred.');
+};
+
 app.use(createPinia())
 app.use(router)
 

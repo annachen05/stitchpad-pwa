@@ -1,12 +1,12 @@
 <template>
-  <div id="app">
+  <div id="app-container">
     <!-- Use uiStore for sideToolbarOpen instead of local data -->
     <button class="toolbar-toggle" @click="uiStore.toggleSideToolbar()">
       {{ uiStore.sideToolbarOpen ? '⮜' : '⮞' }}
     </button>
     <div class="side-toolbar" :class="{ closed: !uiStore.sideToolbarOpen }">
-      <button class="btn btn-toolbar" @click="showSaveDialog = true">Speichern</button>
-      <button class="btn btn-toolbar" @click="drawingStore.clear">Neu</button>
+      <button class="btn btn-toolbar" @click="showSaveDialog = true">Save</button>
+      <button class="btn btn-toolbar" @click="drawingStore.clear">Clear</button>
       <button class="btn btn-toolbar" @click="exportGCode" :disabled="isExportingGCode" title="Export G-code">
         {{ isExportingGCode ? '⏳' : 'Export G-code' }}
       </button>
@@ -15,15 +15,16 @@
 
     <router-view />
 
-    <Toolbar @show-import-dialog="showImportDialog = true" />
-    <ImportDialog :show="showImportDialog" @close="showImportDialog = false" />
+    <Toolbar @show-import-dialog="isImportDialogVisible = true" />
+    <ImportDialog :show="isImportDialogVisible" @close="isImportDialogVisible = false" />
     <SaveDialog v-if="showSaveDialog" @close="showSaveDialog = false" />
     <AboutDialog v-if="showAboutDialog" @close="showAboutDialog = false" />
-    <button class="btn btn-primary" @click="showAboutDialog = true">Über</button>
+    <button class="btn btn-primary" @click="showAboutDialog = true">About</button>
 
-    <div v-if="error" class="error-toast">
-      {{ error }}
-      <button @click="error = null">×</button>
+    <!-- Updated Toast Notification -->
+    <div v-if="toastStore.visible" :class="['toast-notification', toastStore.type]">
+      {{ toastStore.message }}
+      <button @click="toastStore.hideToast()">×</button>
     </div>
   </div>
 </template>
@@ -37,7 +38,9 @@ import AboutDialog from './components/AboutDialog.vue'
 import ImportDialog from './components/ImportDialog.vue'
 import { useDrawingStore } from '@/stores/drawing.js'
 import { useUIStore } from '@/stores/ui.js'
-import { ref } from 'vue'
+import { useToastStore } from '@/stores/toast.js' 
+import { ref, provide } from 'vue'
+import StitchToolbar from './components/StitchToolbar.vue' 
 
 export default {
   components: {
@@ -46,20 +49,20 @@ export default {
     SaveDialog,
     AboutDialog,
     ImportDialog,
+    StitchToolbar,
   },
   data() {
     return {
       showSaveDialog: false,
       showAboutDialog: false,
-      showImportDialog: false,
-      error: null,
     }
   },
   setup() {
     const drawingStore = useDrawingStore()
     const uiStore = useUIStore()
-    const error = ref(null)
+    const toastStore = useToastStore() 
     const isExportingGCode = ref(false)
+    const isImportDialogVisible = ref(false)
 
     async function exportGCode() {
       if (isExportingGCode.value) return
@@ -69,31 +72,36 @@ export default {
         await drawingStore.exportGCode('my-design')
       } catch (error) {
         console.error('G-code export failed:', error)
-
-        alert('Failed to export G-code: ' + error.message)
+        // 4. Use the toast store to show the error
+        toastStore.showError('Failed to export G-code: ' + error.message)
       } finally {
         isExportingGCode.value = false
       }
     }
 
-    function showError(message) {
-      error.value = message
-      setTimeout(() => (error.value = null), 5000)
-    }
+
+    provide('showImportDialog', () => {
+      isImportDialogVisible.value = true
+    })
 
     return {
       drawingStore,
       uiStore,
-      error,
+      toastStore, 
       isExportingGCode,
-      showError,
       exportGCode,
+      isImportDialogVisible,
     }
   },
 }
 </script>
 
 <style>
+#app-container {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+}
 .side-toolbar {
   position: fixed;
   top: 0;
@@ -150,24 +158,40 @@ export default {
 .side-toolbar .export-bar {
   margin-top: 2rem;
 }
-.error-toast {
+
+/* Update CSS to be more generic */
+.toast-notification {
   position: fixed;
   top: 1rem;
   right: 1rem;
-  background: #f44336;
   color: white;
   padding: 1rem;
   border-radius: 5px;
   z-index: 100;
   display: flex;
   align-items: center;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.2);
 }
-.error-toast button {
+
+/* Style for different toast types */
+.toast-notification.error {
+  background: #f44336; 
+}
+.toast-notification.success {
+  background: #4CAF50; 
+}
+.toast-notification.info {
+  background: #2196F3; 
+}
+
+
+.toast-notification button {
   margin-left: 1rem;
   background: none;
   border: none;
   color: white;
   font-weight: bold;
   cursor: pointer;
+  font-size: 1.2rem;
 }
 </style>
