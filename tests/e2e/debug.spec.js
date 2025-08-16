@@ -31,7 +31,7 @@ test('debug about dialog', async ({ page }) => {
   console.log("Before click:", beforeHTML.includes('about-dialog'))
   
   // Click the button
-  const aboutButton = page.locator('button', { hasText: 'Über' })
+  const aboutButton = page.locator('button', { hasText: 'About' })
   await aboutButton.click({ force: true })
   
   // Wait a bit and then check the DOM
