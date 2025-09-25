@@ -6,6 +6,7 @@ const drawingStore = useDrawingStore()
 const isExporting = ref(false)
 const exportStatus = ref('')
 
+// DST and EXP functions remain in codebase but are not used in UI
 async function saveDST() {
   if (isExporting.value) return
 
@@ -14,7 +15,7 @@ async function saveDST() {
     exportStatus.value = 'Exporting DST...'
 
     // Add the missing export call
-    await drawingStore.exportDST('design')
+     // await drawingStore.exportDST('design')
 
     exportStatus.value = 'DST export successful!'
     setTimeout(() => (exportStatus.value = ''), 3000)
@@ -34,7 +35,7 @@ async function saveEXP() {
     exportStatus.value = 'Exporting EXP...'
 
     // Add the missing export call
-    await drawingStore.exportEXP('design')
+    // await drawingStore.exportEXP('design')
 
     exportStatus.value = 'EXP export successful!'
     setTimeout(() => (exportStatus.value = ''), 3000)
@@ -69,12 +70,17 @@ async function saveSVG() {
 
 <template>
   <div class="export-buttons">
+    <!-- DST and EXP buttons are commented out but functionality remains -->
+    <!-- 
     <button class="btn btn-primary" @click="saveDST" :disabled="isExporting">
       {{ isExporting ? 'Exporting...' : 'Export DST' }}
     </button>
     <button class="btn btn-primary" @click="saveEXP" :disabled="isExporting">
       {{ isExporting ? 'Exporting...' : 'Export EXP' }}
     </button>
+    -->
+    
+    <!-- Only SVG export is visible -->
     <button class="btn btn-primary" @click="saveSVG" :disabled="isExporting">
       {{ isExporting ? 'Exporting...' : 'Export SVG' }}
     </button>

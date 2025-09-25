@@ -176,10 +176,10 @@ export function toDST(steps, name, maxX, maxY) {
 /**
  * Generates G-code from stitch data.
  * @param {Array} steps - Array of stitch steps containing x1, y1, x2, y2, and penDown.
- * @param {string} name - Design name for the G-code file.
+ * @param {string} filename - Design name for the G-code file.
  * @returns {string} G-code string representation of the design.
  */
-export function generateGCode(steps, name = 'design') {
+export function generateGCode(steps, filename = 'design') {
   //––– calculate stitch count & raw extents
   const stitchCount = steps.length
   const xs = steps.map((s) => s.x2),
@@ -207,21 +207,21 @@ export function generateGCode(steps, name = 'design') {
 
   // Use maxX, maxY for metadata and validation
   let gcode = []
-  gcode.push(`; Design Bounds Analysis`)
-  gcode.push(`; Original size: ${width.toFixed(3)} x ${height.toFixed(3)}`)
-  gcode.push(`; Machine limits: ${deviceMaxX} x ${deviceMaxY}`)
-  gcode.push(`; Scale factor: ${scale.toFixed(3)}`)
-  gcode.push(`; Final size: ${(width * scale).toFixed(3)} x ${(height * scale).toFixed(3)}`)
+  //gcode.push(`Design Bounds Analysis`)
+  gcode.push(`Original size: ${width.toFixed(3)} x ${height.toFixed(3)}`)
+  gcode.push(`Machine limits: ${deviceMaxX} x ${deviceMaxY}`)
+  gcode.push(`Scale factor: ${scale.toFixed(3)}`)
+  gcode.push(`Final size: ${(width * scale).toFixed(3)} x ${(height * scale).toFixed(3)}`)
   
   gcode.push(`Design name: ${name}`)
   gcode.push(`Generated on: ${new Date().toISOString()}`)
-  gcode.push(`(STITCH_COUNT:${stitchCount})`)
-  gcode.push(`(EXTENTS_LEFT:${minX.toFixed(3)})`)
-  gcode.push(`(EXTENTS_TOP:${minY.toFixed(3)})`)
-  gcode.push(`(EXTENTS_RIGHT:${maxX.toFixed(3)})`) // Using maxX here!
-  gcode.push(`(EXTENTS_BOTTOM:${maxY.toFixed(3)})`) // Using maxY here!
-  gcode.push(`(EXTENTS_WIDTH:${width.toFixed(3)})`)
-  gcode.push(`(EXTENTS_HEIGHT:${height.toFixed(3)})`)
+  //gcode.push(`(STITCH_COUNT:${stitchCount})`)
+  //gcode.push(`(EXTENTS_LEFT:${minX.toFixed(3)})`)
+  //gcode.push(`(EXTENTS_TOP:${minY.toFixed(3)})`)
+  //gcode.push(`(EXTENTS_RIGHT:${maxX.toFixed(3)})`) // Using maxX here!
+  //gcode.push(`(EXTENTS_BOTTOM:${maxY.toFixed(3)})`) // Using maxY here!
+  //gcode.push(`(EXTENTS_WIDTH:${width.toFixed(3)})`)
+  //gcode.push(`(EXTENTS_HEIGHT:${height.toFixed(3)})`)
 
   // Machine setup
   gcode.push('G90') // Absolute positioning
@@ -240,7 +240,7 @@ export function generateGCode(steps, name = 'design') {
     const y = ((step.y2 - minY) * scale).toFixed(3)
     
     // Move to position
-    gcode.push(`G0 X${x} Y${y} ; Step ${index + 1}`)
+    gcode.push(`G0 X${x} Y${y}`)
     
     // Z movement for visualization
     currentZ += dz

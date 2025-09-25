@@ -11,7 +11,13 @@
         {{ isExportingGCode ? '⏳' : 'Export G-code' }}
       </button>
       <ExportButtons />
+      
+      <!-- Machine Control Buttons -->
+      <button class="btn btn-toolbar" @click="connectToMachine">Connect Machine</button>
+      <button class="btn btn-toolbar" @click="sendToMachine">Send to Machine</button>
+      
       <button class="btn btn-toolbar" @click="showAboutDialog = true">About</button>
+
     </div>
 
     <router-view />
@@ -36,11 +42,14 @@ import ExportButtons from './components/ExportButtons.vue'
 import SaveDialog from './components/SaveDialog.vue'
 import AboutDialog from './components/AboutDialog.vue'
 import ImportDialog from './components/ImportDialog.vue'
+import MachineControl from './components/MachineControl.vue'
 import { useDrawingStore } from '@/stores/drawing.js'
 import { useUIStore } from '@/stores/ui.js'
 import { useToastStore } from '@/stores/toast.js' 
 import { ref, provide } from 'vue'
 import StitchToolbar from './components/StitchToolbar.vue' 
+import { klipperService } from './services/klipperService.js'
+import { generateGCode } from './utils/exportUtils.js'
 
 export default {
   components: {
@@ -50,11 +59,13 @@ export default {
     AboutDialog,
     ImportDialog,
     StitchToolbar,
+    MachineControl,
   },
   data() {
     return {
       showSaveDialog: false,
       showAboutDialog: false,
+      showMachineControl: false,
     }
   },
   setup() {
@@ -79,6 +90,19 @@ export default {
       }
     }
 
+    function connectToMachine() {
+      klipperService.connect()
+    }
+
+    function sendToMachine() {
+      if (drawingStore.shepherd.steps.length === 0) {
+        toastStore.showError('Drawing is empty. Nothing to send.')
+        return
+      }
+      const gcode = generateGCode(drawingStore.shepherd.steps, 'stitchpad-design')
+      klipperService.sendGCode(gcode)
+    }
+
 
     provide('showImportDialog', () => {
       isImportDialogVisible.value = true
@@ -91,6 +115,8 @@ export default {
       isExportingGCode,
       exportGCode,
       isImportDialogVisible,
+      connectToMachine,
+      sendToMachine,
     }
   },
 }
@@ -193,5 +219,22 @@ export default {
   font-weight: bold;
   cursor: pointer;
   font-size: 1.2rem;
+}
+
+.machine-section {
+  margin: 1rem 0;
+}
+
+.machine-panel {
+  position: absolute;
+  left: 160px;
+  top: 0;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 1rem;
+  min-width: 300px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 100;
 }
 </style>

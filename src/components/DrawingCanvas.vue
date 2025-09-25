@@ -16,6 +16,35 @@
       </div>
     </div>
 
+    <!-- Stitch Length Scale Control - moved to bottom right -->
+    <div 
+      class="stitch-control"
+      @mousedown.stop
+      @mousemove.stop
+      @mouseup.stop
+      @click.stop
+    >
+      <div class="stitch-scale">
+        <label>Stitch Length</label>
+        <div class="scale-container">
+          <span class="scale-label">Short</span>
+          <input 
+            type="range" 
+            min="5" 
+            max="30" 
+            step="1" 
+            v-model="stitchLength"
+            class="scale-slider"
+            @mousedown.stop
+            @mousemove.stop
+            @mouseup.stop
+          />
+          <span class="scale-label">Long</span>
+        </div>
+        <div class="scale-value">{{ stitchLength }}px</div>
+      </div>
+    </div>
+
     <!-- Updated background image with scaling -->
     <div
       v-if="drawingStore.backgroundImage"
@@ -63,6 +92,7 @@
 </template>
 
 <script setup>
+// filepath: c:\Users\annam\Desktop\stitchpad-pwa\src\components\DrawingCanvas.vue
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useDrawingStore } from '@/stores/drawing.js'
 import { useUIStore } from '@/stores/ui.js'
@@ -76,6 +106,7 @@ const isImporting = ref(false)
 
 let drawing = false
 let lastPos = ref(null)
+const stitchLength = ref(15) // User-controllable stitch length
 
 // Add this watcher to reset the last position when the canvas is cleared
 watch(
@@ -87,42 +118,60 @@ watch(
   }
 )
 
-// Base distance values
-const BASE_DIST_MIN = 8
-const BASE_DIST_MAX = 12
+// Base visual constants
 const BASE_DOT_RADIUS = 2
 const BASE_LINE_WIDTH = 2
 
 // Get current scale from drawingStore
 const scale = computed(() => drawingStore.scale || 1)
 
-// Simple line interpolation function (since we removed the import)
-function lineInterpolate(start, end, maxDistance) {
-  const dx = end.x - start.x
-  const dy = end.y - start.y
-  const distance = Math.sqrt(dx * dx + dy * dy)
-  
-  if (distance <= maxDistance) return [start, end]
-  
-  const steps = Math.ceil(distance / maxDistance)
-  const stepX = dx / steps
-  const stepY = dy / steps
-  const points = []
-  
-  for (let i = 0; i <= steps; i++) {
-    points.push({
-      x: start.x + stepX * i,
-      y: start.y + stepY * i
-    })
-  }
-  return points
+// Calculate distance between two points
+function distance(p1, p2) {
+  return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2))
 }
 
-// Scale-aware distance calculation
-function getScaleAwareDistances() {
-  return {
-    dist_max: BASE_DIST_MAX / scale.value,
+// Check if mouse event is over the stitch control
+function isOverStitchControl(e) {
+  const stitchControl = document.querySelector('.stitch-control')
+  if (!stitchControl) return false
+  
+  const rect = stitchControl.getBoundingClientRect()
+  return (
+    e.clientX >= rect.left &&
+    e.clientX <= rect.right &&
+    e.clientY >= rect.top &&
+    e.clientY <= rect.bottom
+  )
+}
+
+// Enhanced line interpolation with user-controlled fixed spacing
+function lineInterpolateFixed(start, end, fixedDistance) {
+  const dx = end.x - start.x
+  const dy = end.y - start.y
+  const totalDistance = Math.sqrt(dx * dx + dy * dy)
+  
+  // If the distance is very small, just return the endpoints
+  if (totalDistance < fixedDistance * 0.5) {
+    return [start, end]
   }
+  
+  // Calculate number of segments based on fixed spacing
+  const numSegments = Math.max(1, Math.round(totalDistance / fixedDistance))
+  
+  const points = []
+  points.push(start)
+  
+  // Generate evenly spaced points
+  for (let i = 1; i < numSegments; i++) {
+    const t = i / numSegments
+    points.push({
+      x: start.x + dx * t,
+      y: start.y + dy * t
+    })
+  }
+  
+  points.push(end)
+  return points
 }
 
 // Scale-aware visual elements
@@ -135,9 +184,9 @@ function getScaleAwareLineWidth(isPenDown) {
   return baseWidth / scale.value
 }
 
-// Scale-aware interpolation distance
-function getAdaptiveInterpolationDistance() {
-  return BASE_DIST_MIN / Math.sqrt(scale.value)
+// Scale-aware stitch spacing
+function getScaleAwareStitchSpacing() {
+  return stitchLength.value / scale.value
 }
 
 function getRelativePos(e) {
@@ -150,27 +199,17 @@ function getRelativePos(e) {
 
 function ensureConnectedPoints(pos) {
   if (lastPos.value) {
-    const dist = Math.sqrt(
-      Math.pow(lastPos.value.x - pos.x, 2) + Math.pow(lastPos.value.y - pos.y, 2)
-    )
-
-    const { dist_max } = getScaleAwareDistances()
-
-    if (dist > dist_max && uiStore.interpolate && !uiStore.isJump) {
-      const adaptiveDistance = getAdaptiveInterpolationDistance()
-      const points = lineInterpolate(lastPos.value, pos, adaptiveDistance)
-
-      // Connect each consecutive pair of points as separate lines
-      for (let i = 0; i < points.length - 1; i++) {
-        addLine(points[i], points[i + 1])
-      }
-
-      lastPos.value = pos
-    } else {
-      // Direct connection without interpolation
-      addLine(lastPos.value, pos)
-      lastPos.value = pos
+    const fixedSpacing = getScaleAwareStitchSpacing()
+    
+    // Always use fixed spacing interpolation for consistent results
+    const points = lineInterpolateFixed(lastPos.value, pos, fixedSpacing)
+    
+    // Connect each consecutive pair of points as separate lines
+    for (let i = 0; i < points.length - 1; i++) {
+      addLine(points[i], points[i + 1])
     }
+    
+    lastPos.value = pos
   } else {
     // First point - just set the position
     lastPos.value = pos
@@ -187,6 +226,11 @@ function addLine(pos1, pos2) {
 }
 
 function onPointerDown(e) {
+  // Prevent drawing when clicking on stitch control
+  if (isOverStitchControl(e)) {
+    return
+  }
+  
   drawing = true
   const pos = getRelativePos(e)
 
@@ -201,11 +245,27 @@ function onPointerDown(e) {
 
 function onPointerMove(e) {
   if (!drawing) return
+  
+  // Prevent drawing when over stitch control
+  if (isOverStitchControl(e)) {
+    return
+  }
+  
   const pos = getRelativePos(e)
-  ensureConnectedPoints(pos)
+  
+  // Only add a new stitch if we've moved far enough from the last position
+  if (lastPos.value) {
+    const dist = distance(lastPos.value, pos)
+    const minDistance = getScaleAwareStitchSpacing()
+    
+    if (dist >= minDistance) {
+      ensureConnectedPoints(pos)
+    }
+  }
 }
 
-function onPointerUp() {
+function onPointerUp(e) {
+  // Always stop drawing, regardless of where the mouse is
   drawing = false
   // Keep lastPos.value so the next stroke continues from here
 }
@@ -228,7 +288,6 @@ const onDrop = async (event) => {
 
 // Virtualize large step lists
 const visibleSteps = computed(() => {
-  // Be aware that very large designs (>10,000 steps) might impact performance.
   return drawingStore.shepherd.steps
 })
 
@@ -253,6 +312,79 @@ onUnmounted(() => {
   height: calc(100vh - 100px);
   position: relative;
   overflow: hidden;
+}
+
+.stitch-control {
+  position: absolute;
+  bottom: 45px;  
+  right: 20px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 1rem;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  z-index: 10;
+  min-width: 200px;
+  pointer-events: auto; /* Ensure it captures mouse events */
+}
+
+.stitch-scale label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: #333;
+  font-size: 0.9rem;
+}
+
+.scale-container {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.scale-label {
+  font-size: 0.8rem;
+  color: #666;
+  min-width: 35px;
+  text-align: center;
+}
+
+.scale-slider {
+  flex: 1;
+  height: 6px;
+  background: #ddd;
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+}
+
+.scale-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  background: #7a0081;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.scale-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  background: #7a0081;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+}
+
+.scale-value {
+  text-align: center;
+  font-size: 0.8rem;
+  color: #7a0081;
+  font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  background: #f8f0f9;
+  border-radius: 4px;
 }
 
 .background-image {
@@ -280,7 +412,7 @@ svg {
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(255, 255, 255, 0.8);
+  background: rgb(255, 255, 255);
   display: flex;
   align-items: center;
   justify-content: center;

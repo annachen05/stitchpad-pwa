@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite' // ← hier defineConfig importieren
+import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
 import { fileURLToPath, URL } from 'node:url'
@@ -28,6 +28,9 @@ export default defineConfig({
     },
   },
   server: {
-    port: 3000, // Change to a different port if needed
+    host: '0.0.0.0', // Listen on all network interfaces
+    port: 3000,
+    // Allow WebSocket connections to different origins
+    cors: true,
   },
 })
