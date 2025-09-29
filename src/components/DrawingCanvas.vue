@@ -60,7 +60,10 @@
       :width="width"
       :height="height"
       style="background: transparent; width: 100%; height: 100%"
-      :style="{ transform: `scale(${scale})`, transformOrigin: 'top left' }"
+      :style="{ 
+        transform: `scale(${scale})`, 
+        transformOrigin: 'center center'  /* Changed from 'top left' to 'center center' */
+      }"
     >
       <g>
         <!-- Render each step as individual line segments -->
@@ -191,22 +194,46 @@ function getScaleAwareStitchSpacing() {
 
 function getRelativePos(e) {
   const rect = canvasRef.value.getBoundingClientRect()
+  
+  // Calculate the center offset for centered zoom
+  const centerX = rect.width / 2
+  const centerY = rect.height / 2
+  
+  // Adjust coordinates to account for centered scaling
+  const scaledCenterX = centerX * scale.value
+  const scaledCenterY = centerY * scale.value
+  const offsetX = (scaledCenterX - centerX) / scale.value
+  const offsetY = (scaledCenterY - centerY) / scale.value
+  
   return {
-    x: (e.clientX - rect.left) / scale.value,
-    y: (e.clientY - rect.top) / scale.value,
+    x: (e.clientX - rect.left) / scale.value + offsetX,
+    y: (e.clientY - rect.top) / scale.value + offsetY,
   }
 }
 
+// FIXED: Restore proper interpolate and jump functionality
 function ensureConnectedPoints(pos) {
   if (lastPos.value) {
     const fixedSpacing = getScaleAwareStitchSpacing()
+    const totalDistance = distance(lastPos.value, pos)
     
-    // Always use fixed spacing interpolation for consistent results
-    const points = lineInterpolateFixed(lastPos.value, pos, fixedSpacing)
-    
-    // Connect each consecutive pair of points as separate lines
-    for (let i = 0; i < points.length - 1; i++) {
-      addLine(points[i], points[i + 1])
+    if (uiStore.interpolate) {
+      // WITH interpolation: Always create evenly spaced stitches between points
+      if (totalDistance > fixedSpacing) {
+        const points = lineInterpolateFixed(lastPos.value, pos, fixedSpacing)
+        
+        // Connect each consecutive pair of points as separate lines
+        for (let i = 0; i < points.length - 1; i++) {
+          addLine(points[i], points[i + 1])
+        }
+      } else {
+        // Direct connection if distance is small
+        addLine(lastPos.value, pos)
+      }
+    } else {
+      // WITHOUT interpolation: Direct connection but still use regular spacing control
+      // This allows long running stitches but still respects the spacing setting
+      addLine(lastPos.value, pos)
     }
     
     lastPos.value = pos
@@ -253,11 +280,12 @@ function onPointerMove(e) {
   
   const pos = getRelativePos(e)
   
-  // Only add a new stitch if we've moved far enough from the last position
   if (lastPos.value) {
     const dist = distance(lastPos.value, pos)
     const minDistance = getScaleAwareStitchSpacing()
     
+    // FIXED: Always use regular spacing control for when to add points
+    // The difference is in HOW the points are connected (interpolated vs direct)
     if (dist >= minDistance) {
       ensureConnectedPoints(pos)
     }
