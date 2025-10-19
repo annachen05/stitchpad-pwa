@@ -52,6 +52,14 @@ export const useDrawingStore = defineStore('drawing', {
 
     undo() {
       this.shepherd.undoStep()
+      if (this.shepherd.steps.length > 0) {
+        const lastStep = this.shepherd.steps[this.shepherd.steps.length - 1]
+        this.shepherd.currentX = lastStep.x2
+        this.shepherd.currentY = lastStep.y2
+      } else {
+        this.shepherd.currentX = 0
+        this.shepherd.currentY = 0
+      }
     },
 
     addLine(x1, y1, x2, y2, penDown) {

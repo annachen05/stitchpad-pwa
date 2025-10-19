@@ -100,6 +100,9 @@ import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useDrawingStore } from '@/stores/drawing.js'
 import { useUIStore } from '@/stores/ui.js'
 
+// ### ADD THIS IMPORT ###
+import { lineInterpolate } from '@/services/embroidery.js'  // your old adaptive routine
+
 const drawingStore = useDrawingStore()
 const uiStore = useUIStore()
 const canvasRef = ref(null)
@@ -111,13 +114,24 @@ let drawing = false
 let lastPos = ref(null)
 const stitchLength = ref(15) // User-controllable stitch length
 
-// Add this watcher to reset the last position when the canvas is cleared
+
+let prevStepsLen = drawingStore.shepherd.steps.length
 watch(
   () => drawingStore.shepherd.steps.length,
-  (newLength) => {
-    if (newLength === 0) {
-      lastPos.value = null
+  (newLen, oldLen) => {
+    // only run on undo (step count decreased)
+    if (newLen < oldLen) {
+      const steps = drawingStore.shepherd.steps
+      if (steps.length > 0) {
+        // reconnect to the last remaining point
+        const last = steps[steps.length - 1]
+        lastPos.value = { x: last.x2, y: last.y2 }
+      } else {
+        // nothing left
+        lastPos.value = null
+      }
     }
+    prevStepsLen = newLen
   }
 )
 
@@ -145,36 +159,6 @@ function isOverStitchControl(e) {
     e.clientY >= rect.top &&
     e.clientY <= rect.bottom
   )
-}
-
-// Enhanced line interpolation with user-controlled fixed spacing
-function lineInterpolateFixed(start, end, fixedDistance) {
-  const dx = end.x - start.x
-  const dy = end.y - start.y
-  const totalDistance = Math.sqrt(dx * dx + dy * dy)
-  
-  // If the distance is very small, just return the endpoints
-  if (totalDistance < fixedDistance * 0.5) {
-    return [start, end]
-  }
-  
-  // Calculate number of segments based on fixed spacing
-  const numSegments = Math.max(1, Math.round(totalDistance / fixedDistance))
-  
-  const points = []
-  points.push(start)
-  
-  // Generate evenly spaced points
-  for (let i = 1; i < numSegments; i++) {
-    const t = i / numSegments
-    points.push({
-      x: start.x + dx * t,
-      y: start.y + dy * t
-    })
-  }
-  
-  points.push(end)
-  return points
 }
 
 // Scale-aware visual elements
@@ -211,36 +195,46 @@ function getRelativePos(e) {
   }
 }
 
+// Inline “fixed‐spacing” interpolator:
+function lineInterpolateFixed(start, end, fixedDistance) {
+  const dx = end.x - start.x
+  const dy = end.y - start.y
+  const total = Math.hypot(dx, dy)
+  // if very short, just return endpoints
+  if (total < fixedDistance * 0.5) {
+    return [start, end]
+  }
+  const steps = Math.max(1, Math.round(total / fixedDistance))
+  const pts = [start]
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps
+    pts.push({ x: start.x + dx * t, y: start.y + dy * t })
+  }
+  pts.push(end)
+  return pts
+}
+
 // FIXED: Restore proper interpolate and jump functionality
 function ensureConnectedPoints(pos) {
-  if (lastPos.value) {
-    const fixedSpacing = getScaleAwareStitchSpacing()
-    const totalDistance = distance(lastPos.value, pos)
-    
-    if (uiStore.interpolate) {
-      // WITH interpolation: Always create evenly spaced stitches between points
-      if (totalDistance > fixedSpacing) {
-        const points = lineInterpolateFixed(lastPos.value, pos, fixedSpacing)
-        
-        // Connect each consecutive pair of points as separate lines
-        for (let i = 0; i < points.length - 1; i++) {
-          addLine(points[i], points[i + 1])
-        }
-      } else {
-        // Direct connection if distance is small
-        addLine(lastPos.value, pos)
-      }
-    } else {
-      // WITHOUT interpolation: Direct connection but still use regular spacing control
-      // This allows long running stitches but still respects the spacing setting
-      addLine(lastPos.value, pos)
-    }
-    
+  if (!lastPos.value) {
     lastPos.value = pos
-  } else {
-    // First point - just set the position
-    lastPos.value = pos
+    return
   }
+
+  const spacing = getScaleAwareStitchSpacing()
+
+  if (uiStore.interpolate) {
+    // INT ON → break into evenly-spaced stitches
+    const pts = lineInterpolateFixed(lastPos.value, pos, spacing)
+    for (let i = 1; i < pts.length; i++) {
+      addLine(pts[i-1], pts[i])
+    }
+  } else {
+    // INT OFF → one long running stitch
+    addLine(lastPos.value, pos)
+  }
+
+  lastPos.value = pos
 }
 
 function addLine(pos1, pos2) {
@@ -272,23 +266,12 @@ function onPointerDown(e) {
 
 function onPointerMove(e) {
   if (!drawing) return
-  
-  // Prevent drawing when over stitch control
-  if (isOverStitchControl(e)) {
-    return
-  }
-  
+  if (isOverStitchControl(e)) return
+
   const pos = getRelativePos(e)
-  
-  if (lastPos.value) {
-    const dist = distance(lastPos.value, pos)
-    const minDistance = getScaleAwareStitchSpacing()
-    
-    // FIXED: Always use regular spacing control for when to add points
-    // The difference is in HOW the points are connected (interpolated vs direct)
-    if (dist >= minDistance) {
-      ensureConnectedPoints(pos)
-    }
+  // only step when you've moved at least one 'spacing' unit
+  if (distance(lastPos.value || pos, pos) >= getScaleAwareStitchSpacing()) {
+    ensureConnectedPoints(pos)
   }
 }
 
@@ -332,6 +315,11 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('keydown', uiStore.handleKeydown)
 })
+
+function undo() {
+  drawingStore.undo()
+  lastPos.value = null // Reset lastPos when undo is triggered
+}
 </script>
 
 <style scoped>

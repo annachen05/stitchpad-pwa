@@ -68,7 +68,7 @@
         <div class="scale-slider">
           <label>
             <input type="checkbox" v-model="zoomToFit" @change="updateImageScale" />
-            Zoom to fit
+            <span class="zoom-to-fit-label">Zoom to fit</span>
           </label>
           <div class="slider-container">
             <span>{{ (imageScale * 100).toFixed(0) }}%</span>
@@ -413,6 +413,18 @@ function closeDialog() {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.scale-slider label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #333; /* Ensure proper text color */
+}
+
+.zoom-to-fit-label {
+  color: #333 !important; /* Force dark text color */
+  font-weight: 500;
 }
 
 .slider-container {

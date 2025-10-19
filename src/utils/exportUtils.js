@@ -195,7 +195,7 @@ export function generateGCode(steps, filename = 'design') {
   const deviceMaxX = 70
   const deviceMaxY = 130
   
-  // Check if design fits within machine limits (using the variables!)
+  // Check if design fits within machine limits
   if (width > deviceMaxX || height > deviceMaxY) {
     console.warn(`Design size (${width.toFixed(1)} x ${height.toFixed(1)}) exceeds machine limits (${deviceMaxX} x ${deviceMaxY})`)
   }
@@ -205,7 +205,6 @@ export function generateGCode(steps, filename = 'design') {
   const scaleY = height > 0 ? deviceMaxY / height : 1
   const scale = Math.min(scaleX, scaleY)
 
-  // Use maxX, maxY for metadata and validation
   let gcode = []
   //gcode.push(`Design Bounds Analysis`)
   gcode.push(`Original size: ${width.toFixed(3)} x ${height.toFixed(3)}`)
@@ -213,15 +212,8 @@ export function generateGCode(steps, filename = 'design') {
   gcode.push(`Scale factor: ${scale.toFixed(3)}`)
   gcode.push(`Final size: ${(width * scale).toFixed(3)} x ${(height * scale).toFixed(3)}`)
   
-  gcode.push(`Design name: ${name}`)
-  gcode.push(`Generated on: ${new Date().toISOString()}`)
-  //gcode.push(`(STITCH_COUNT:${stitchCount})`)
-  //gcode.push(`(EXTENTS_LEFT:${minX.toFixed(3)})`)
-  //gcode.push(`(EXTENTS_TOP:${minY.toFixed(3)})`)
-  //gcode.push(`(EXTENTS_RIGHT:${maxX.toFixed(3)})`) // Using maxX here!
-  //gcode.push(`(EXTENTS_BOTTOM:${maxY.toFixed(3)})`) // Using maxY here!
-  //gcode.push(`(EXTENTS_WIDTH:${width.toFixed(3)})`)
-  //gcode.push(`(EXTENTS_HEIGHT:${height.toFixed(3)})`)
+  gcode.push(`; Design name: ${filename}`)
+  gcode.push(`; Generated on: ${new Date().toISOString()}`)
 
   // Machine setup
   gcode.push('G90') // Absolute positioning
@@ -230,19 +222,31 @@ export function generateGCode(steps, filename = 'design') {
   gcode.push('G0 X0.0 Y0.0') // Move to origin
   gcode.push('')
 
-  // Apply scale & emit moves
+  // Apply coordinate transformation and emit moves
   let currentZ = 0
   const dz = 5
   
   steps.forEach((step, index) => {
-    // Translate to zero-origin, then scale
-    const x = ((step.x2 - minX) * scale).toFixed(3)
-    const y = ((step.y2 - minY) * scale).toFixed(3)
+    // FIXED: Apply coordinate transformation to fix mirroring
+    // 1. Translate to zero-origin
+    let x = step.x2 - minX
+    let y = step.y2 - minY
+    
+    // 2. Apply mirroring correction (flip Y-axis)
+    y = height - y
+    
+    // 3. Apply scaling
+    x = x * scale
+    y = y * scale
+    
+    // 4. Format to 3 decimal places
+    const xPos = x.toFixed(3)
+    const yPos = y.toFixed(3)
     
     // Move to position
-    gcode.push(`G0 X${x} Y${y}`)
+    gcode.push(`G0 X${xPos} Y${yPos}`)
     
-    // Z movement for visualization
+    // Z movement for visualization (if needed)
     currentZ += dz
     gcode.push(`G0 Z${currentZ.toFixed(1)}`)
   })
