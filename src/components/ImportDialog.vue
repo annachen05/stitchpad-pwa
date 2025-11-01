@@ -91,12 +91,44 @@
         <button @click="closeDialog" class="close-btn">Close</button>
       </div>
     </div>
+
+    <!-- Image Choice Dialog -->
+    <div v-if="showImageChoiceDialog" class="choice-dialog-overlay" @click="showImageChoiceDialog = false">
+      <div class="choice-dialog" @click.stop>
+        <h3>How would you like to use this image?</h3>
+        <p class="choice-description">Choose how to import your image:</p>
+        
+        <div class="choice-options">
+          <button class="choice-btn vectorize" @click="chooseVectorize">
+            <div class="choice-icon">✏️</div>
+            <strong>Vectorize</strong>
+            <p>Convert image lines to embroidery paths</p>
+          </button>
+          
+          <button class="choice-btn background" @click="chooseBackground">
+            <div class="choice-icon">🖼️</div>
+            <strong>Background</strong>
+            <p>Use as reference image</p>
+          </button>
+        </div>
+        
+        <button @click="showImageChoiceDialog = false" class="cancel-choice">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Vectorize Dialog -->
+    <VectorizeDialog 
+      :show="showVectorizeDialog"
+      :imageDataUrl="imageToVectorize"
+      @close="showVectorizeDialog = false"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { useDrawingStore } from '@/stores/drawing.js'
+import VectorizeDialog from './VectorizeDialog.vue'
 
 defineProps({
   show: {
@@ -112,6 +144,9 @@ const fileInput = ref(null)
 const imageScale = ref(1)
 const zoomToFit = ref(false)
 const isDragOver = ref(false)
+const showVectorizeDialog = ref(false)
+const showImageChoiceDialog = ref(false)
+const imageToVectorize = ref(null)
 
 // Check if there's a design loaded
 const hasDesign = computed(() => drawingStore.shepherd.steps.length > 0)
@@ -149,10 +184,10 @@ function processFile(file) {
     // Handle image files
     const reader = new FileReader()
     reader.onload = (e) => {
-      drawingStore.setBackground(e.target.result)
-      imageScale.value = 1
-      zoomToFit.value = false
-      console.log('Background image loaded:', file.name)
+      // Store image and show choice dialog
+      imageToVectorize.value = e.target.result
+      showImageChoiceDialog.value = true
+      console.log('Image loaded:', file.name)
     }
     reader.readAsDataURL(file)
   } else {
@@ -235,6 +270,20 @@ function updateImageScale() {
     calculateZoomToFit()
   } else {
     drawingStore.setBackgroundScale(imageScale.value)
+  }
+}
+
+function chooseVectorize() {
+  showImageChoiceDialog.value = false
+  showVectorizeDialog.value = true
+}
+
+function chooseBackground() {
+  showImageChoiceDialog.value = false
+  if (imageToVectorize.value) {
+    drawingStore.setBackground(imageToVectorize.value)
+    imageScale.value = 1
+    zoomToFit.value = false
   }
 }
 
@@ -455,5 +504,116 @@ function closeDialog() {
 
 .close-btn:hover {
   background-color: #5a6268;
+}
+
+/* Image Choice Dialog */
+.choice-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1001;
+}
+
+.choice-dialog {
+  background: white;
+  border-radius: 12px;
+  padding: 2rem;
+  max-width: 600px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.choice-dialog h3 {
+  margin: 0 0 0.5rem 0;
+  color: #333;
+  text-align: center;
+  font-size: 1.5rem;
+}
+
+.choice-description {
+  text-align: center;
+  color: #666;
+  margin-bottom: 2rem;
+}
+
+.choice-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.choice-btn {
+  padding: 2rem 1rem;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.3s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.choice-btn:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.choice-btn.vectorize {
+  border-color: #7a0081;
+}
+
+.choice-btn.vectorize:hover {
+  background: #f8f0f9;
+  border-color: #5a0061;
+}
+
+.choice-btn.background {
+  border-color: #2196F3;
+}
+
+.choice-btn.background:hover {
+  background: #e3f2fd;
+  border-color: #1976d2;
+}
+
+.choice-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.choice-btn strong {
+  font-size: 1.1rem;
+  margin-bottom: 0.5rem;
+  color: #333;
+  display: block;
+}
+
+.choice-btn p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.cancel-choice {
+  width: 100%;
+  padding: 0.75rem;
+  background: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.cancel-choice:hover {
+  background: #5a6268;
 }
 </style>
