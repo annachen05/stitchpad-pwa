@@ -39,13 +39,12 @@
           <label>
             Detection Mode
             <select v-model="settings.detectionMode" @change="updatePreview">
-              <option value="standard">Standard (Threshold)</option>
-              <option value="adaptive">Adaptive Threshold</option>
-              <option value="edge">Edge Detection (Sobel)</option>
-              <option value="canny">Canny Edge Detection (Professional)</option>
+              <option value="standard">Standard</option>
+              <option value="adaptive">Adaptive</option>
+              <option value="edge">Edge Detection</option>
+              <option value="canny">Advanced Edge Detection</option>
             </select>
           </label>
-          <small v-if="settings.detectionMode === 'canny'" class="setting-hint">Industry-standard edge detection with hysteresis</small>
         </div>
         
         <!-- Auto Threshold -->
@@ -68,11 +67,11 @@
               v-model="settings.enhanceContrast"
               @change="updatePreview"
             />
-            Enhance Contrast First (Recommended)
+            Enhance Contrast
           </label>
         </div>
         
-        <!-- Advanced Contrast Enhancement (CLAHE) -->
+        <!-- Advanced Contrast Enhancement -->
         <div v-if="settings.enhanceContrast" class="setting-group">
           <label>
             <input 
@@ -80,16 +79,16 @@
               v-model="settings.useCLAHE"
               @change="updatePreview"
             />
-            Use Professional CLAHE (Better for Low Contrast)
+            Advanced Contrast Enhancement
           </label>
-          <small class="setting-hint">Contrast Limited Adaptive Histogram Equalization - better than standard histogram equalization</small>
+          <small class="setting-hint">Better for images with low contrast</small>
         </div>
         
         <!-- CLAHE Settings -->
         <div v-if="settings.enhanceContrast && settings.useCLAHE" class="setting-subgroup">
           <div class="setting-group">
             <label>
-              CLAHE Clip Limit
+              Contrast Strength
               <input 
                 type="range" 
                 min="1" 
@@ -100,12 +99,12 @@
               />
               <span class="value">{{ settings.claheClipLimit }}</span>
             </label>
-            <small class="setting-hint">Higher = more contrast enhancement (2.0 recommended)</small>
+            <small class="setting-hint">Higher = stronger contrast (2.0 recommended)</small>
           </div>
           
           <div class="setting-group">
             <label>
-              CLAHE Tile Size
+              Detail Level
               <input 
                 type="range" 
                 min="4" 
@@ -116,7 +115,7 @@
               />
               <span class="value">{{ settings.claheTileSize }}</span>
             </label>
-            <small class="setting-hint">Smaller = more local adaptation (8 recommended)</small>
+            <small class="setting-hint">Lower = more detail (8 recommended)</small>
           </div>
         </div>
         
@@ -154,7 +153,7 @@
         <!-- Edge Threshold -->
         <div v-if="settings.detectionMode === 'edge'" class="setting-group">
           <label>
-            Edge Detection Sensitivity
+            Edge Sensitivity
             <input 
               type="range" 
               min="10" 
@@ -170,7 +169,7 @@
         <div v-if="settings.detectionMode === 'canny'" class="setting-subgroup">
           <div class="setting-group">
             <label>
-              Canny Low Threshold
+              Low Threshold
               <input 
                 type="range" 
                 min="10" 
@@ -180,12 +179,12 @@
               />
               <span class="value">{{ settings.cannyLowThreshold }}</span>
             </label>
-            <small class="setting-hint">Lower = more edges detected (50 recommended)</small>
+            <small class="setting-hint">Lower = more edges detected</small>
           </div>
           
           <div class="setting-group">
             <label>
-              Canny High Threshold
+              High Threshold
               <input 
                 type="range" 
                 min="50" 
@@ -195,13 +194,13 @@
               />
               <span class="value">{{ settings.cannyHighThreshold }}</span>
             </label>
-            <small class="setting-hint">Should be 2-3x low threshold (150 recommended)</small>
+            <small class="setting-hint">Should be 2-3x low threshold</small>
           </div>
         </div>
         
         <div class="setting-group">
           <label>
-            Median Filter Size
+            Noise Filter
             <input 
               type="range" 
               min="0" 
@@ -222,9 +221,8 @@
               v-model="settings.useUnsharpMask"
               @change="updatePreview"
             />
-            Use Unsharp Masking (Edge Sharpening)
+            Sharpen Edges
           </label>
-          <small class="setting-hint">Enhances edges before detection</small>
         </div>
         
         <div v-if="settings.useUnsharpMask" class="setting-subgroup">
@@ -252,27 +250,27 @@
               v-model="settings.useMorphology"
               @change="updatePreview"
             />
-            Use Morphological Operations (Noise Removal)
+            Noise Removal
           </label>
-          <small class="setting-hint">Opening removes small noise, Closing fills small gaps</small>
+          <small class="setting-hint">Cleans up small artifacts</small>
         </div>
         
         <div v-if="settings.useMorphology" class="setting-subgroup">
           <div class="setting-group">
             <label>
-              Operation Type
+              Operation
               <select v-model="settings.morphologyOperation" @change="updatePreview">
-                <option value="opening">Opening (Remove Noise)</option>
-                <option value="closing">Closing (Fill Gaps)</option>
-                <option value="dilate">Dilate (Thicken)</option>
-                <option value="erode">Erode (Thin)</option>
+                <option value="opening">Remove Noise</option>
+                <option value="closing">Fill Gaps</option>
+                <option value="dilate">Thicken Lines</option>
+                <option value="erode">Thin Lines</option>
               </select>
             </label>
           </div>
           
           <div class="setting-group">
             <label>
-              Iterations
+              Strength
               <input 
                 type="range" 
                 min="1" 
@@ -292,13 +290,13 @@
               v-model="settings.applySkeletonize"
               @change="updatePreview"
             />
-            Apply Centerline Tracing (Skeletonize)
+            Trace Centerlines
           </label>
         </div>
         
         <div class="setting-group">
           <label>
-            Simplification Tolerance
+            Simplification
             <input 
               type="range" 
               min="0.5" 
@@ -313,7 +311,7 @@
         
         <div class="setting-group">
           <label>
-            Smoothing Iterations
+            Smoothing
             <input 
               type="range" 
               min="0" 
@@ -333,15 +331,15 @@
               v-model="settings.useBezierFitting"
               @change="updatePreview"
             />
-            Use Bezier Curve Fitting (Professional)
+            Smooth Curves
           </label>
-          <small class="setting-hint">Creates smooth Bezier curves (like Potrace/Illustrator)</small>
+          <small class="setting-hint">Creates smoother curves</small>
         </div>
         
         <div v-if="settings.useBezierFitting" class="setting-subgroup">
           <div class="setting-group">
             <label>
-              Curve Fitting Error Tolerance
+              Curve Precision
               <input 
                 type="range" 
                 min="0.5" 
@@ -352,7 +350,7 @@
               />
               <span class="value">{{ settings.bezierError }}</span>
             </label>
-            <small class="setting-hint">Lower = more accurate but more points</small>
+            <small class="setting-hint">Lower = more accurate</small>
           </div>
         </div>
         
@@ -368,13 +366,12 @@
             />
             <span class="value">{{ settings.outputScale }}x</span>
           </label>
-          <small class="setting-hint">Additional scaling factor (applied after auto-fit)</small>
         </div>
         
         <!-- Max Image Size -->
         <div class="setting-group">
           <label>
-            Max Processing Size (prevents freezing)
+            Max Image Size
             <input 
               type="range" 
               min="500" 
@@ -385,7 +382,7 @@
             />
             <span class="value">{{ settings.maxImageSize }}px</span>
           </label>
-          <small class="setting-hint">Higher values = better quality but slower processing</small>
+          <small class="setting-hint">Higher = better quality but slower</small>
         </div>
       </div>
       
@@ -399,8 +396,8 @@
       
       <!-- Image Info Warning -->
       <div v-if="imageInfo && imageInfo.willResize" class="warning-message">
-        ⚠️ Large image detected ({{ imageInfo.width }}x{{ imageInfo.height }}). 
-        Will be automatically resized to {{ settings.maxImageSize }}px for processing to prevent freezing.
+        ⚠️ Large image ({{ imageInfo.width }}x{{ imageInfo.height }}). 
+        Will be resized to {{ settings.maxImageSize }}px for processing.
       </div>
       
       <!-- Actions -->
@@ -424,10 +421,11 @@ import { useToastStore } from '@/stores/toast.js'
 
 const props = defineProps({
   show: Boolean,
-  imageDataUrl: String
+  imageDataUrl: String,
+  initialSettings: Object
 })
 
-const emit = defineEmits(['close'])
+const emit = defineEmits(['close', 'vectorization-complete', 'settings-changed'])
 
 const drawingStore = useDrawingStore()
 const toastStore = useToastStore()
@@ -440,11 +438,11 @@ const statusType = ref('info')
 const progressPercent = ref(0)
 const imageInfo = ref(null)
 
-const settings = ref({
-  detectionMode: 'standard', // standard, adaptive, edge, canny
+const defaultSettings = {
+  detectionMode: 'standard',
   threshold: 128,
-  autoThreshold: true, // Enable by default for better results
-  enhanceContrast: true, // Enable by default
+  autoThreshold: true,
+  enhanceContrast: true,
   adaptiveBlockSize: 15,
   edgeThreshold: 30,
   medianFilterSize: 3,
@@ -452,9 +450,8 @@ const settings = ref({
   simplifyTolerance: 2.0,
   smoothIterations: 2,
   outputScale: 1.0,
-  maxImageSize: 1000, // Max dimension for processing
-  autoFitToCanvas: true, // Auto-fit enabled by default
-  // Professional options
+  maxImageSize: 1000,
+  autoFitToCanvas: true,
   useCLAHE: false,
   claheClipLimit: 2.0,
   claheTileSize: 8,
@@ -468,10 +465,35 @@ const settings = ref({
   morphologyIterations: 1,
   useBezierFitting: false,
   bezierError: 1.0
-})
+}
+
+const settings = ref({ ...defaultSettings })
 
 let currentPaths = []
 let debounceTimer = null
+
+// Watch for initial settings changes
+watch(() => props.initialSettings, (newSettings) => {
+  if (newSettings) {
+    console.log('Loading saved settings:', newSettings)
+    settings.value = { ...defaultSettings, ...newSettings }
+    
+    if (previewImage.value) {
+      nextTick(() => updatePreview())
+    }
+  } else {
+    // Reset to defaults for new image
+    settings.value = { ...defaultSettings }
+  }
+}, { immediate: true })
+
+// Watch settings and emit changes (debounced)
+watch(settings, (newSettings) => {
+  if (debounceTimer) clearTimeout(debounceTimer)
+  debounceTimer = setTimeout(() => {
+    emit('settings-changed', { ...newSettings })
+  }, 1000)
+}, { deep: true })
 
 watch(() => props.imageDataUrl, (newUrl) => {
   if (newUrl) {
@@ -749,12 +771,18 @@ async function applyVectorization() {
       )
     }
     
+    // Save vectorization info before closing
+    drawingStore.setLastVectorization(props.imageDataUrl, settings.value)
+    
     const message = settings.value.autoFitToCanvas 
       ? 'Vectorization applied and auto-fitted to canvas!' 
       : 'Vectorization applied successfully!'
     
     toastStore.showToast(message, 'success')
+    
+    // Close VectorizeDialog and signal completion to parent ImportDialog
     emit('close')
+    emit('vectorization-complete')
     
   } catch (error) {
     console.error('Apply vectorization error:', error)

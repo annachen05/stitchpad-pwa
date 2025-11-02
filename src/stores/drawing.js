@@ -10,6 +10,8 @@ export const useDrawingStore = defineStore('drawing', {
     backgroundImage: null,
     backgroundScale: 1,
     stitchType: 'running',
+    lastVectorizedImage: null,
+    lastVectorizeSettings: null,
   }),
 
   getters: {
@@ -65,7 +67,7 @@ export const useDrawingStore = defineStore('drawing', {
     addLine(x1, y1, x2, y2, penDown) {
       this.shepherd.moveTo(x1, y1, x2, y2, penDown)
     },
-
+ 
     addPoint(x, y) {
       this.shepherd.addPoint(x, y)
     },
@@ -140,6 +142,50 @@ export const useDrawingStore = defineStore('drawing', {
     setStitchType(type) { 
       this.stitchType = type;
       console.log(`Stitch type set to: ${type}`);
+    },
+
+    // Add vectorized paths as stitches
+    addVectorizedPaths(paths, scale = 1) {
+      for (const path of paths) {
+        for (let i = 0; i < path.length - 1; i++) {
+          const [x1, y1] = path[i]
+          const [x2, y2] = path[i + 1]
+          
+          this.addLine(
+            x1 * scale,
+            y1 * scale,
+            x2 * scale,
+            y2 * scale,
+            true
+          )
+        }
+      }
+    },
+
+    // Vectorization persistence actions
+    setLastVectorization(imageDataUrl, settings) {
+      this.lastVectorizedImage = imageDataUrl
+      this.lastVectorizeSettings = { ...settings }
+      
+      // Persist to localStorage
+      try {
+        localStorage.setItem('lastVectorizedImage', imageDataUrl)
+        localStorage.setItem('lastVectorizeSettings', JSON.stringify(settings))
+      } catch (e) {
+        console.warn('Failed to save vectorization settings:', e)
+      }
+    },
+
+    loadLastVectorization() {
+      try {
+        const image = localStorage.getItem('lastVectorizedImage')
+        const settings = localStorage.getItem('lastVectorizeSettings')
+        
+        if (image) this.lastVectorizedImage = image
+        if (settings) this.lastVectorizeSettings = JSON.parse(settings)
+      } catch (e) {
+        console.warn('Failed to load vectorization settings:', e)
+      }
     },
   },
 })

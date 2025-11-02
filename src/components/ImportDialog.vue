@@ -26,6 +26,17 @@
         <p class="file-info">DST files or images (PNG, JPG, etc.)</p>
       </div>
 
+      <!-- Re-vectorize Section -->
+      <div v-if="drawingStore.lastVectorizedImage" class="re-vectorize-section">
+        <button @click="openReVectorize" class="re-vectorize-btn">
+          <span class="btn-icon">🔄</span>
+          <div class="btn-text">
+            <strong>Re-vectorize Last Image</strong>
+            <small>Adjust settings and re-apply</small>
+          </div>
+        </button>
+      </div>
+
       <!-- Current Files Section -->
       <div class="current-files">
         <!-- Background Image -->
@@ -120,13 +131,16 @@
     <VectorizeDialog 
       :show="showVectorizeDialog"
       :imageDataUrl="imageToVectorize"
+      :initialSettings="initialVectorizeSettings"
       @close="showVectorizeDialog = false"
+      @vectorization-complete="handleVectorizationComplete"
+      @settings-changed="handleSettingsChanged"
     />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useDrawingStore } from '@/stores/drawing.js'
 import VectorizeDialog from './VectorizeDialog.vue'
 
@@ -147,9 +161,15 @@ const isDragOver = ref(false)
 const showVectorizeDialog = ref(false)
 const showImageChoiceDialog = ref(false)
 const imageToVectorize = ref(null)
+const initialVectorizeSettings = ref(null)
 
 // Check if there's a design loaded
 const hasDesign = computed(() => drawingStore.shepherd.steps.length > 0)
+
+// Load last vectorization on mount
+onMounted(() => {
+  drawingStore.loadLastVectorization()
+})
 
 // Watch for background changes
 watch(
@@ -186,6 +206,7 @@ function processFile(file) {
     reader.onload = (e) => {
       // Store image and show choice dialog
       imageToVectorize.value = e.target.result
+      initialVectorizeSettings.value = null // Reset for new image
       showImageChoiceDialog.value = true
       console.log('Image loaded:', file.name)
     }
@@ -285,6 +306,23 @@ function chooseBackground() {
     imageScale.value = 1
     zoomToFit.value = false
   }
+}
+
+function openReVectorize() {
+  imageToVectorize.value = drawingStore.lastVectorizedImage
+  initialVectorizeSettings.value = drawingStore.lastVectorizeSettings
+  showVectorizeDialog.value = true
+}
+
+function handleVectorizationComplete() {
+  // Close the VectorizeDialog
+  showVectorizeDialog.value = false
+  // Close the ImportDialog as well
+  closeDialog()
+}
+
+function handleSettingsChanged(settings) {
+  drawingStore.setLastVectorization(imageToVectorize.value, settings)
 }
 
 function closeDialog() {
@@ -615,5 +653,54 @@ function closeDialog() {
 
 .cancel-choice:hover {
   background: #5a6268;
+}
+
+/* Re-vectorize Section */
+.re-vectorize-section {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: linear-gradient(135deg, #f0f8ff 0%, #e8f5e9 100%);
+  border-radius: 8px;
+  border: 2px solid #7a0081;
+}
+
+.re-vectorize-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: white;
+  border: 2px solid #7a0081;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.re-vectorize-btn:hover {
+  background: #f8f0f9;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(122, 0, 129, 0.2);
+}
+
+.btn-icon {
+  font-size: 2rem;
+}
+
+.btn-text {
+  flex: 1;
+  text-align: left;
+}
+
+.btn-text strong {
+  display: block;
+  color: #7a0081;
+  font-size: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.btn-text small {
+  color: #666;
+  font-size: 0.85rem;
 }
 </style>
