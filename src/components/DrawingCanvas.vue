@@ -7,6 +7,10 @@
     @mousemove="onPointerMove"
     @mouseup="onPointerUp"
     @mouseleave="onPointerUp"
+    @touchstart.prevent="onTouchStart"
+    @touchmove.prevent="onTouchMove"
+    @touchend.prevent="onTouchEnd"
+    @touchcancel.prevent="onTouchEnd"
     @dragover.prevent
     @drop="onDrop"
   >
@@ -23,6 +27,9 @@
       @mousemove.stop
       @mouseup.stop
       @click.stop
+      @touchstart.stop
+      @touchmove.stop
+      @touchend.stop
     >
       <div class="stitch-scale">
         <label>Stitch Length</label>
@@ -148,16 +155,19 @@ function distance(p1, p2) {
 }
 
 // Check if mouse event is over the stitch control
-function isOverStitchControl(e) {
+function isOverStitchControl(eventOrTouch) {
   const stitchControl = document.querySelector('.stitch-control')
   if (!stitchControl) return false
   
   const rect = stitchControl.getBoundingClientRect()
+  const clientX = eventOrTouch.clientX
+  const clientY = eventOrTouch.clientY
+  
   return (
-    e.clientX >= rect.left &&
-    e.clientX <= rect.right &&
-    e.clientY >= rect.top &&
-    e.clientY <= rect.bottom
+    clientX >= rect.left &&
+    clientX <= rect.right &&
+    clientY >= rect.top &&
+    clientY <= rect.bottom
   )
 }
 
@@ -192,6 +202,24 @@ function getRelativePos(e) {
   return {
     x: (e.clientX - rect.left) / scale.value + offsetX,
     y: (e.clientY - rect.top) / scale.value + offsetY,
+  }
+}
+
+// Get relative position for touch events
+function getTouchRelativePos(touch) {
+  const rect = canvasRef.value.getBoundingClientRect()
+  
+  const centerX = rect.width / 2
+  const centerY = rect.height / 2
+  
+  const scaledCenterX = centerX * scale.value
+  const scaledCenterY = centerY * scale.value
+  const offsetX = (scaledCenterX - centerX) / scale.value
+  const offsetY = (scaledCenterY - centerY) / scale.value
+  
+  return {
+    x: (touch.clientX - rect.left) / scale.value + offsetX,
+    y: (touch.clientY - rect.top) / scale.value + offsetY,
   }
 }
 
@@ -281,6 +309,36 @@ function onPointerUp(e) {
   // Keep lastPos.value so the next stroke continues from here
 }
 
+// Touch event handlers
+function onTouchStart(e) {
+  if (e.touches.length !== 1) return // Only handle single touch
+  if (isOverStitchControl(e.touches[0])) return
+  
+  drawing = true
+  const pos = getTouchRelativePos(e.touches[0])
+  
+  if (lastPos.value) {
+    ensureConnectedPoints(pos)
+  } else {
+    lastPos.value = pos
+  }
+}
+
+function onTouchMove(e) {
+  if (!drawing || e.touches.length !== 1) return
+  if (isOverStitchControl(e.touches[0])) return
+
+  const pos = getTouchRelativePos(e.touches[0])
+  if (distance(lastPos.value || pos, pos) >= getScaleAwareStitchSpacing()) {
+    ensureConnectedPoints(pos)
+  }
+}
+
+function onTouchEnd(e) {
+  drawing = false
+  // Keep lastPos.value so the next stroke continues from here
+}
+
 const onDrop = async (event) => {
   event.preventDefault()
   const file = event.dataTransfer.files[0]
@@ -328,6 +386,9 @@ function undo() {
   height: calc(100vh - 100px);
   position: relative;
   overflow: hidden;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .stitch-control {
@@ -341,7 +402,8 @@ function undo() {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
   z-index: 10;
   min-width: 200px;
-  pointer-events: auto; /* Ensure it captures mouse events */
+  pointer-events: auto;
+  touch-action: auto;
 }
 
 .stitch-scale label {
@@ -373,20 +435,22 @@ function undo() {
   border-radius: 3px;
   outline: none;
   cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .scale-slider::-webkit-slider-thumb {
   appearance: none;
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
   background: #7a0081;
   border-radius: 50%;
   cursor: pointer;
 }
 
 .scale-slider::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
   background: #7a0081;
   border-radius: 50%;
   cursor: pointer;
@@ -441,5 +505,19 @@ svg {
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   font-size: 1.2rem;
+}
+
+/* Mobile-specific adjustments */
+@media (max-width: 768px) {
+  .stitch-control {
+    bottom: 10px;
+    right: 10px;
+    left: 10px;
+    min-width: auto;
+  }
+  
+  .drawing-canvas {
+    height: calc(100vh - 60px);
+  }
 }
 </style>

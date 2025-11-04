@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { TurtleShepherd } from '@/lib/app.js'
 import { ExportService } from '@/services/exportService.js'
 import { MACHINE_CONFIG } from '@/config/machine.js'
+import { optimizeStitchPaths, analyzeStitches } from '@/utils/pathOptimizer.js'
 
 export const useDrawingStore = defineStore('drawing', {
   state: () => ({
@@ -12,6 +13,7 @@ export const useDrawingStore = defineStore('drawing', {
     stitchType: 'running',
     lastVectorizedImage: null,
     lastVectorizeSettings: null,
+    optimizePathsEnabled: true, // New: Path optimization toggle
   }),
 
   getters: {
@@ -72,21 +74,63 @@ export const useDrawingStore = defineStore('drawing', {
       this.shepherd.addPoint(x, y)
     },
 
-    // Export actions
+    // Export actions with path optimization
     async exportDST(name = 'design') {
-      await ExportService.exportDST(this.shepherd, name)
+      const shepherd = this.getOptimizedShepherd()
+      await ExportService.exportDST(shepherd, name)
     },
 
     async exportEXP(name = 'design') {
-      await ExportService.exportEXP(this.shepherd, name)
+      const shepherd = this.getOptimizedShepherd()
+      await ExportService.exportEXP(shepherd, name)
     },
 
     async exportSVG(name = 'design') {
-      await ExportService.exportSVG(this.shepherd, name)
+      const shepherd = this.getOptimizedShepherd()
+      await ExportService.exportSVG(shepherd, name)
     },
 
     async exportGCode(name = 'design') {
-      await ExportService.exportGCode(this.shepherd.steps, name)
+      const steps = this.optimizePathsEnabled 
+        ? optimizeStitchPaths(this.shepherd.steps)
+        : this.shepherd.steps
+      await ExportService.exportGCode(steps, name)
+    },
+
+    // Helper to get shepherd with optimized paths if enabled
+    getOptimizedShepherd() {
+      if (this.optimizePathsEnabled) {
+        const optimizedSteps = optimizeStitchPaths(this.shepherd.steps)
+        return { ...this.shepherd, steps: optimizedSteps }
+      }
+      return this.shepherd
+    },
+
+    // Toggle path optimization
+    setPathOptimization(enabled) {
+      this.optimizePathsEnabled = enabled
+      console.log(`Path optimization ${enabled ? 'enabled' : 'disabled'}`)
+    },
+
+    // Get optimization statistics
+    getOptimizationStats() {
+      if (this.shepherd.steps.length === 0) {
+        return null
+      }
+      
+      const originalStats = analyzeStitches(this.shepherd.steps)
+      const optimizedSteps = optimizeStitchPaths(this.shepherd.steps)
+      const optimizedStats = analyzeStitches(optimizedSteps)
+      
+      return {
+        original: originalStats,
+        optimized: optimizedStats,
+        improvement: {
+          jumpsReduced: originalStats.jumps - optimizedStats.jumps,
+          jumpsPercent: ((originalStats.jumps - optimizedStats.jumps) / originalStats.jumps * 100).toFixed(1),
+          distanceSaved: (originalStats.jumpDistance - optimizedStats.jumpDistance).toFixed(1),
+        }
+      }
     },
 
     // Scale actions

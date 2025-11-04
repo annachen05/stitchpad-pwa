@@ -26,6 +26,16 @@
       🔗 INT
     </button>
 
+    <button
+      id="optimize-icon"
+      class="btn btn-toolbar"
+      :class="{ active: drawingStore.optimizePathsEnabled }"
+      @click="toggleOptimization"
+      title="Optimize Paths (Reduce Jump Stitches)"
+    >
+      ⚡ OPT
+    </button>
+
     <button class="btn btn-toolbar" @click="showImportDialog">Import</button>
   </div>
 </template>
@@ -51,6 +61,11 @@ function zoomOut() {
 
 function resetZoom() {
   drawingStore.resetZoom()
+}
+
+// Toggle path optimization
+function toggleOptimization() {
+  drawingStore.setPathOptimization(!drawingStore.optimizePathsEnabled)
 }
 
 // Fix: Emit the event
