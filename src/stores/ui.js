@@ -6,6 +6,8 @@ export const useUIStore = defineStore('ui', {
     isJump: false,
     interpolate: false,
     sideToolbarOpen: true,
+    isEraser: false,
+    eraserSize: 20,
   }),
 
   actions: {
@@ -25,6 +27,17 @@ export const useUIStore = defineStore('ui', {
       this.sideToolbarOpen = !this.sideToolbarOpen
     },
 
+    toggleEraser() {
+      this.isEraser = !this.isEraser
+      if (this.isEraser) {
+        this.isJump = false
+      }
+    },
+
+    setEraserSize(size) {
+      this.eraserSize = Math.max(5, Math.min(size, 100))
+    },
+
     // Add keyboard shortcut handler
     handleKeydown(event) {
       if (event.key === 'j' || event.key === 'J') {
@@ -33,6 +46,10 @@ export const useUIStore = defineStore('ui', {
       }
       if (event.key === 'i' || event.key === 'I') {
         this.toggleInterpolate()
+        event.preventDefault()
+      }
+      if (event.key === 'e' || event.key === 'E') {
+        this.toggleEraser()
         event.preventDefault()
       }
     },

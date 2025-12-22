@@ -74,8 +74,10 @@ class TurtleShepherd {
     header.set(new TextEncoder().encode(this.maxX.toString().padStart(5, ' ')), 100) // Max X
     header.set(new TextEncoder().encode(this.maxY.toString().padStart(5, ' ')), 105) // Max Y
 
-    // Encode stitches
-    const stitches = this.steps.map((step) => {
+    // Encode stitches (3 bytes per stitch)
+    const stitchBytes = new Uint8Array(this.steps.length * 3)
+    let o = 0
+    for (const step of this.steps) {
       const x = Math.round(step.x2 - step.x1)
       const y = Math.round(step.y2 - step.y1)
       const flags = step.penDown ? 0x00 : 0x80 // Pen down or jump stitch
@@ -83,23 +85,41 @@ class TurtleShepherd {
       const encodedX = x < 0 ? 0x100 + x : x
       const encodedY = y < 0 ? 0x100 + y : y
 
-      return [encodedX & 0xff, encodedY & 0xff, flags]
-    })
+      stitchBytes[o++] = encodedX & 0xff
+      stitchBytes[o++] = encodedY & 0xff
+      stitchBytes[o++] = flags
+    }
 
     // Add end-of-file marker
-    const dstContent = [header, ...stitches.flat(), [0x00, 0x00, 0xf3]] // End of file
-    return new Uint8Array(dstContent.flat())
+    const eof = new Uint8Array([0x00, 0x00, 0xf3])
+
+    // NOTE: Array.flat() does not flatten Uint8Array; build a contiguous buffer instead.
+    const out = new Uint8Array(header.length + stitchBytes.length + eof.length)
+    out.set(header, 0)
+    out.set(stitchBytes, header.length)
+    out.set(eof, header.length + stitchBytes.length)
+    return out
   }
   toEXP() {
     const header = new Uint8Array(512).fill(0x20) // Placeholder header
-    const stitches = this.steps.map((step) => {
+
+    const stitchBytes = new Uint8Array(this.steps.length * 3)
+    let o = 0
+    for (const step of this.steps) {
       const x = Math.round(step.x2 - step.x1)
       const y = Math.round(step.y2 - step.y1)
       const flags = step.penDown ? 0x00 : 0x80 // Pen down or jump stitch
-      return new Uint8Array([x & 0xff, y & 0xff, flags])
-    })
-    const expContent = [header, ...stitches, new Uint8Array([0x00, 0x00, 0xf3])] // End of file
-    return new Uint8Array(expContent.flat())
+      stitchBytes[o++] = x & 0xff
+      stitchBytes[o++] = y & 0xff
+      stitchBytes[o++] = flags
+    }
+
+    const eof = new Uint8Array([0x00, 0x00, 0xf3])
+    const out = new Uint8Array(header.length + stitchBytes.length + eof.length)
+    out.set(header, 0)
+    out.set(stitchBytes, header.length)
+    out.set(eof, header.length + stitchBytes.length)
+    return out
   }
   toSVG() {
     const viewBoxWidth = this.maxX + 10 // Add padding

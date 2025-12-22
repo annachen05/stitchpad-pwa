@@ -1,7 +1,7 @@
 // Create src/config/machine.js
 export const MACHINE_CONFIG = {
-  maxX: 70,
-  maxY: 130,
+  maxX: 110,
+  maxY: 170,
   defaultScale: 1,
   gridSize: 25,
   maxStitches: 10000,

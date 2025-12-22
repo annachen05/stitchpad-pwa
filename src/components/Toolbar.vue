@@ -4,7 +4,7 @@
     <button class="btn btn-toolbar" @click="uiStore.toggleGrid">Grid</button>
     <button class="btn btn-toolbar" @click="zoomIn">+</button>
     <button class="btn btn-toolbar" @click="zoomOut">-</button>
-    <button class="btn btn-toolbar" @click="resetZoom" title="Reset Zoom (1:1)">🎯</button>
+    <button class="btn btn-toolbar" @click="resetZoom" title="Reset Zoom (Default)">🎯</button>
 
     <button
       id="jump-icon"
@@ -24,6 +24,16 @@
       title="Toggle Interpolate (Shortcut: I)"
     >
       🔗 INT
+    </button>
+
+    <button
+      id="eraser-icon"
+      class="btn btn-toolbar"
+      :class="{ active: uiStore.isEraser }"
+      @click="uiStore.toggleEraser"
+      title="Toggle Eraser (Shortcut: E)"
+    >
+      🧹 ERASE
     </button>
 
     <button
@@ -122,5 +132,14 @@ function showImportDialog() {
 
 button.active {
   background-color: var(--active-bg);
+}
+
+#eraser-icon.active {
+  background: #ff4444;
+  color: white;
+}
+
+#eraser-icon.active:hover {
+  background: #ff6666;
 }
 </style>

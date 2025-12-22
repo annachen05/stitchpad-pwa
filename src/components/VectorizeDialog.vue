@@ -402,8 +402,8 @@
       
       <!-- Actions -->
       <div class="dialog-buttons">
-        <button @click="applyVectorization" :disabled="!previewImage || isProcessing" class="btn btn-primary">
-          {{ isProcessing ? 'Processing...' : 'Apply to Canvas' }}
+        <button @click="saveVectorization" :disabled="!previewImage || isProcessing" class="btn btn-primary">
+          {{ isProcessing ? 'Processing...' : '💾 Save Vectorization' }}
         </button>
         <button @click="closeDialog" class="btn btn-secondary" :disabled="isProcessing">
           Cancel
@@ -787,6 +787,61 @@ async function applyVectorization() {
   } catch (error) {
     console.error('Apply vectorization error:', error)
     toastStore.showError(`Failed to apply: ${error.message}`)
+  } finally {
+    isProcessing.value = false
+  }
+}
+
+// NEW: Save vectorization without applying to canvas
+async function saveVectorization() {
+  if (!currentPaths || currentPaths.length === 0) {
+    toastStore.showError('No vectorized paths to save')
+    return
+  }
+  
+  try {
+    isProcessing.value = true
+    status.value = 'Saving vectorization...'
+    
+    // Get canvas dimensions for metadata
+    const canvasWidth = drawingStore.shepherd.maxX
+    const canvasHeight = drawingStore.shepherd.maxY
+    
+    // Calculate bounds for metadata
+    const bounds = VectorizeService.calculateBounds(currentPaths)
+    
+    // Save paths to store (not as stitches yet!)
+    const metadata = {
+      autoFit: settings.value.autoFitToCanvas,
+      outputScale: settings.value.outputScale,
+      canvas: { width: canvasWidth, height: canvasHeight },
+      bounds,
+      pathCount: currentPaths.length,
+      settings: { ...settings.value }
+    }
+    
+    drawingStore.setVectorizedPaths(currentPaths, metadata)
+    
+    // Save vectorization info for re-use
+    drawingStore.setLastVectorization(props.imageDataUrl, settings.value)
+    
+    console.log('✅ Vectorization saved:', {
+      pathCount: currentPaths.length,
+      metadata
+    })
+    
+    toastStore.showToast('Vectorization saved! Configure stitching next.', 'success')
+    
+    // Signal that vectorization is complete (parent will show stitch dialog)
+    emit('vectorization-complete', {
+      pathCount: currentPaths.length,
+      metadata
+    })
+    emit('close')
+    
+  } catch (error) {
+    console.error('Save vectorization error:', error)
+    toastStore.showError(`Failed to save: ${error.message}`)
   } finally {
     isProcessing.value = false
   }

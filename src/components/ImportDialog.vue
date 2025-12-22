@@ -37,6 +37,17 @@
         </button>
       </div>
 
+      <!-- Configure Stitching Section (if vectorized paths exist) -->
+      <div v-if="drawingStore.vectorizedPaths" class="stitch-config-section">
+        <button @click="openStitchSettings" class="stitch-config-btn">
+          <span class="btn-icon">🧵</span>
+          <div class="btn-text">
+            <strong>Configure Stitching</strong>
+            <small>{{ drawingStore.vectorizedPaths.length }} vectorized paths ready</small>
+          </div>
+        </button>
+      </div>
+
       <!-- Current Files Section -->
       <div class="current-files">
         <!-- Background Image -->
@@ -136,6 +147,14 @@
       @vectorization-complete="handleVectorizationComplete"
       @settings-changed="handleSettingsChanged"
     />
+
+    <!-- Stitch Settings Dialog -->
+    <StitchSettingsDialog 
+      :show="showStitchSettingsDialog"
+      :pathCount="vectorizationPathCount"
+      @close="showStitchSettingsDialog = false"
+      @apply="handleStitchSettingsApplied"
+    />
   </div>
 </template>
 
@@ -143,6 +162,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useDrawingStore } from '@/stores/drawing.js'
 import VectorizeDialog from './VectorizeDialog.vue'
+import StitchSettingsDialog from './StitchSettingsDialog.vue'
 
 defineProps({
   show: {
@@ -159,9 +179,11 @@ const imageScale = ref(1)
 const zoomToFit = ref(false)
 const isDragOver = ref(false)
 const showVectorizeDialog = ref(false)
+const showStitchSettingsDialog = ref(false)
 const showImageChoiceDialog = ref(false)
 const imageToVectorize = ref(null)
 const initialVectorizeSettings = ref(null)
+const vectorizationPathCount = ref(0)
 
 // Check if there's a design loaded
 const hasDesign = computed(() => drawingStore.shepherd.steps.length > 0)
@@ -314,10 +336,29 @@ function openReVectorize() {
   showVectorizeDialog.value = true
 }
 
-function handleVectorizationComplete() {
+function openStitchSettings() {
+  if (drawingStore.vectorizedPaths) {
+    vectorizationPathCount.value = drawingStore.vectorizedPaths.length
+    showStitchSettingsDialog.value = true
+  }
+}
+
+function handleVectorizationComplete(data) {
   // Close the VectorizeDialog
   showVectorizeDialog.value = false
-  // Close the ImportDialog as well
+  
+  // Store path count for stitch settings
+  if (data && data.pathCount) {
+    vectorizationPathCount.value = data.pathCount
+  }
+  
+  // Open Stitch Settings Dialog
+  showStitchSettingsDialog.value = true
+}
+
+function handleStitchSettingsApplied(settings) {
+  // Stitch settings were applied, close everything
+  showStitchSettingsDialog.value = false
   closeDialog()
 }
 
@@ -681,6 +722,34 @@ function closeDialog() {
   background: #f8f0f9;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(122, 0, 129, 0.2);
+}
+
+/* Stitch Configuration Section */
+.stitch-config-section {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: linear-gradient(135deg, #fff3e0 0%, #fce4ec 100%);
+  border-radius: 8px;
+  border: 2px solid #ff6b6b;
+}
+
+.stitch-config-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: white;
+  border: 2px solid #ff6b6b;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.stitch-config-btn:hover {
+  background: #fff8f0;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 107, 107, 0.2);
 }
 
 .btn-icon {
