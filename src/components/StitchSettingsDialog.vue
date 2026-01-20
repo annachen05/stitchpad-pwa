@@ -6,8 +6,8 @@
       <div class="info-banner">
         <div class="info-icon">ℹ️</div>
         <div class="info-text">
-          <strong>Vectorization Complete!</strong>
-          <p>{{ pathCount }} paths detected. Now configure how they should be stitched.</p>
+          <strong>Vector Paths Ready</strong>
+          <p>{{ pathCount }} paths detected. Configure how they should be stitched.</p>
         </div>
       </div>
 
@@ -19,6 +19,47 @@
 
       <!-- Stitch Settings -->
       <div class="settings-section">
+        <!-- Auto-fit to Canvas/Paper -->
+        <div class="setting-group highlight-setting">
+          <label>
+            <input
+              type="checkbox"
+              v-model="settings.autoFitToCanvas"
+              @change="updatePreview"
+            />
+            <strong>Auto-fit to paper</strong>
+          </label>
+          <small class="setting-hint">Keeps the stitched output within the paper bounds (recommended)</small>
+        </div>
+
+        <!-- Simplify Paths -->
+        <div class="setting-group">
+          <label>
+            <input
+              type="checkbox"
+              v-model="settings.simplifyPaths"
+              @change="updatePreview"
+            />
+            <strong>Simplify paths</strong>
+          </label>
+          <small class="setting-hint">Reduces path complexity for both preview and stitching (Shortcut: Ctrl+L)</small>
+        </div>
+
+        <div v-if="settings.simplifyPaths" class="setting-group">
+          <label>
+            <strong>Simplify level: {{ settings.simplifyLevel }}</strong>
+            <input
+              type="range"
+              min="1"
+              max="25"
+              step="1"
+              v-model.number="settings.simplifyLevel"
+              @input="updatePreview"
+            />
+          </label>
+          <small class="setting-hint">Higher = fewer points. Ctrl+L increases this level.</small>
+        </div>
+
         <!-- Stitch Type -->
         <div class="setting-group">
           <label>
@@ -107,7 +148,7 @@
       <!-- Actions -->
       <div class="dialog-buttons">
         <button @click="applyStitchSettings" class="btn btn-primary">
-          ✅ Apply to Canvas
+          Apply to Canvas
         </button>
         <button @click="closeDialog" class="btn btn-secondary">
           Cancel
@@ -139,7 +180,10 @@ const settings = ref({
   stitchType: 'running',
   stitchLength: 3.0,
   scale: 1.0,
-  optimizePaths: true
+  optimizePaths: true,
+  autoFitToCanvas: true,
+  simplifyPaths: false,
+  simplifyLevel: 1,
 })
 
 // Calculate estimated stitches based on ACTUAL path lengths and stitch length
@@ -190,6 +234,12 @@ function updatePreview() {
 
 function applyStitchSettings() {
   console.log('Applying stitch settings:', settings.value)
+
+  if (settings.value.simplifyPaths) {
+    drawingStore.setVectorSimplifyLevel(settings.value.simplifyLevel)
+  } else {
+    drawingStore.resetVectorSimplify()
+  }
   
   // Set path optimization preference in store
   drawingStore.setPathOptimization(settings.value.optimizePaths)

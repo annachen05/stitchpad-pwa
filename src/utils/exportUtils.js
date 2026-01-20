@@ -3,6 +3,9 @@
  * @param {Uint8Array} content - The binary content of the DST file.
  * @throws {Error} If the file is invalid.
  */
+import { MACHINE_CONFIG } from '@/config/machine.js'
+import { PX_PER_CM } from '@/config/paper.js'
+
 export function validateDST(content) {
   console.log('Validating DST file. Length:', content.length) // Debugging log
 
@@ -87,6 +90,45 @@ export function generateSVG(steps, maxX, maxY) {
       }
     })
     .join('')
+  return `${svgHeader}${svgContent}${svgFooter}`
+}
+
+/**
+ * Generates a paper-sized SVG in millimeters.
+ * - Coordinates are interpreted as "world" coords used in the app.
+ * - We convert to paper-local coords by subtracting paperRect.x/y.
+ * - Output SVG uses mm units so 13x8.6cm becomes 130x86mm (depending on orientation).
+ */
+export function generatePaperSVG(steps, name = 'design', paperPx, paperRect) {
+  if (!paperPx || !Number.isFinite(paperPx.w) || !Number.isFinite(paperPx.h) || paperPx.w <= 0 || paperPx.h <= 0) {
+    throw new Error('Missing paper size for SVG export')
+  }
+  if (!paperRect || !Number.isFinite(paperRect.x) || !Number.isFinite(paperRect.y)) {
+    throw new Error('Missing paper rect for SVG export')
+  }
+
+  const mmPerPx = 10 / PX_PER_CM
+  const wMm = paperPx.w * mmPerPx
+  const hMm = paperPx.h * mmPerPx
+
+  const svgHeader = `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${wMm.toFixed(
+    3
+  )}mm" height="${hMm.toFixed(3)}mm" viewBox="0 0 ${wMm.toFixed(3)} ${hMm.toFixed(3)}">\n<!-- Design: ${name} -->\n`
+  const svgFooter = '\n</svg>'
+
+  const svgContent = (steps || [])
+    .map((step) => {
+      const x1 = (step.x1 - paperRect.x) * mmPerPx
+      const y1 = (step.y1 - paperRect.y) * mmPerPx
+      const x2 = (step.x2 - paperRect.x) * mmPerPx
+      const y2 = (step.y2 - paperRect.y) * mmPerPx
+
+      const stroke = step.penDown ? '#333' : '#f00'
+      const opacity = step.penDown ? '1' : '0.5'
+      return `<line x1="${x1.toFixed(3)}" y1="${y1.toFixed(3)}" x2="${x2.toFixed(3)}" y2="${y2.toFixed(3)}" stroke="${stroke}" stroke-width="0.25" opacity="${opacity}" />`
+    })
+    .join('\n')
+
   return `${svgHeader}${svgContent}${svgFooter}`
 }
 
@@ -179,41 +221,63 @@ export function toDST(steps, name, maxX, maxY) {
  * @param {string} filename - Design name for the G-code file.
  * @returns {string} G-code string representation of the design.
  */
-export function generateGCode(steps, filename = 'design') {
+export function generateGCode(steps, filename = 'design', machineBounds = MACHINE_CONFIG, paperPx = null, paperRect = null) {
   //––– calculate stitch count & raw extents
   const stitchCount = steps.length
-  const xs = steps.map((s) => s.x2),
-    ys = steps.map((s) => s.y2)
-  const minX = Math.min(...xs),
-    maxX = Math.max(...xs)
-  const minY = Math.min(...ys),
-    maxY = Math.max(...ys)
-  const width = maxX - minX,
-    height = maxY - minY
+  const xs = steps.flatMap((s) => [s.x1, s.x2])
+  const ys = steps.flatMap((s) => [s.y1, s.y2])
+  const minX = Math.min(...xs)
+  const maxX = Math.max(...xs)
+  const minY = Math.min(...ys)
+  const maxY = Math.max(...ys)
+  const widthPx = maxX - minX
+  const heightPx = maxY - minY
 
-  //––– your machine's travel limits
-  const deviceMaxX = 70
-  const deviceMaxY = 130
+  //––– your machine's travel limits (mm)
+  const deviceMaxX = machineBounds?.maxX ?? MACHINE_CONFIG.maxX
+  const deviceMaxY = machineBounds?.maxY ?? MACHINE_CONFIG.maxY
+
+  // Canvas coordinates are in CSS px using a fixed 96dpi baseline.
+  // Convert px -> mm so that 13x8.6cm canvas exports as 130x86mm without rescaling.
+  const mmPerPx = 10 / PX_PER_CM
+  const widthMm = widthPx * mmPerPx
+  const heightMm = heightPx * mmPerPx
+
+  const exportMode =
+    paperPx && Number.isFinite(paperPx.h) && paperPx.h > 0 && paperRect && Number.isFinite(paperRect.x) && Number.isFinite(paperRect.y)
+      ? 'paper'
+      : 'packed'
+
+  // For paper-relative export, compute extents in paper-local coords for accurate size reporting.
+  let widthMmForReport = widthMm
+  let heightMmForReport = heightMm
+  if (exportMode === 'paper') {
+    const xLocal = xs.map((v) => v - paperRect.x)
+    const yLocal = ys.map((v) => v - paperRect.y)
+    const minLX = Math.min(...xLocal)
+    const maxLX = Math.max(...xLocal)
+    const minLY = Math.min(...yLocal)
+    const maxLY = Math.max(...yLocal)
+    widthMmForReport = (maxLX - minLX) * mmPerPx
+    heightMmForReport = (maxLY - minLY) * mmPerPx
+  }
   
   // Check if design fits within machine limits
-  if (width > deviceMaxX || height > deviceMaxY) {
-    console.warn(`Design size (${width.toFixed(1)} x ${height.toFixed(1)}) exceeds machine limits (${deviceMaxX} x ${deviceMaxY})`)
+  if (widthMmForReport > deviceMaxX || heightMmForReport > deviceMaxY) {
+    console.warn(
+      `Design size (${widthMmForReport.toFixed(1)} x ${heightMmForReport.toFixed(1)} mm) exceeds machine limits (${deviceMaxX} x ${deviceMaxY} mm)`
+    )
   }
-
-  //––– compute uniform scale
-  const scaleX = width > 0 ? deviceMaxX / width : 1
-  const scaleY = height > 0 ? deviceMaxY / height : 1
-  const scale = Math.min(scaleX, scaleY)
 
   let gcode = []
   //gcode.push(`Design Bounds Analysis`)
-  gcode.push(`Original size: ${width.toFixed(3)} x ${height.toFixed(3)}`)
-  gcode.push(`Machine limits: ${deviceMaxX} x ${deviceMaxY}`)
-  gcode.push(`Scale factor: ${scale.toFixed(3)}`)
-  gcode.push(`Final size: ${(width * scale).toFixed(3)} x ${(height * scale).toFixed(3)}`)
-  
-  gcode.push(`; Design name: ${filename}`)
-  gcode.push(`; Generated on: ${new Date().toISOString()}`)
+  //gcode.push(`Original size: ${widthMmForReport.toFixed(3)} x ${heightMmForReport.toFixed(3)} (mm)`)
+  //gcode.push(`Machine limits: ${deviceMaxX} x ${deviceMaxY} (mm)`)
+
+  // Metadata header (use plain text so tests and humans can read it)
+  gcode.push(`Design name: ${filename}`)
+  //gcode.push(`Generated on: ${new Date().toISOString()}`)
+  gcode.push('')
 
   // Machine setup
   gcode.push('G90') // Absolute positioning
@@ -227,21 +291,28 @@ export function generateGCode(steps, filename = 'design') {
   const dz = 5
   
   steps.forEach((step, index) => {
-    // FIXED: Apply coordinate transformation to fix mirroring
-    // 1. Translate to zero-origin
-    let x = step.x2 - minX
-    let y = step.y2 - minY
-    
-    // 2. Apply mirroring correction (flip Y-axis)
-    y = height - y
-    
-    // 3. Apply scaling
-    x = x * scale
-    y = y * scale
+    let xMm
+    let yMm
+
+    if (exportMode === 'paper') {
+      // Paper-relative coordinates: (0,0) is top-left in canvas (y-down).
+      // Machine origin is bottom-left -> flip Y around paper height.
+      const xPaperPx = step.x2 - paperRect.x
+      const yPaperPx = step.y2 - paperRect.y
+      xMm = xPaperPx * mmPerPx
+      yMm = (paperPx.h - yPaperPx) * mmPerPx
+    } else {
+      // Fallback: pack design to origin (legacy behavior) then flip Y.
+      const xPx = step.x2 - minX
+      let yPx = step.y2 - minY
+      yPx = heightPx - yPx
+      xMm = xPx * mmPerPx
+      yMm = yPx * mmPerPx
+    }
     
     // 4. Format to 3 decimal places
-    const xPos = x.toFixed(3)
-    const yPos = y.toFixed(3)
+    const xPos = xMm.toFixed(3)
+    const yPos = yMm.toFixed(3)
     
     // Move to position
     gcode.push(`G0 X${xPos} Y${yPos}`)

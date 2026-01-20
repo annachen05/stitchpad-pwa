@@ -24,7 +24,8 @@ test('debug DOM structure', async ({ page }) => {
 
 test('debug about dialog', async ({ page }) => {
   await page.goto('/')
-  await page.waitForLoadState('networkidle')
+  // Avoid networkidle with Vite/HMR; wait for a stable UI signal instead
+  await page.getByRole('button', { name: 'About' }).waitFor()
   
   // Get the DOM before clicking
   const beforeHTML = await page.evaluate(() => document.body.innerHTML)

@@ -2,7 +2,8 @@ import { test, expect } from '@playwright/test'
 
 test('basic app functionality', async ({ page }) => {
   // Navigiere zur Seite und warte, bis sie vollständig geladen ist
-  await page.goto('/', { waitUntil: 'networkidle' });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#app')).toBeVisible();
   
   // Teste, ob die Seite überhaupt lädt
   const title = await page.title();

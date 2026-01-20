@@ -52,13 +52,7 @@ async function saveSVG() {
 
   try {
     isExporting.value = true
-    exportStatus.value = 'Exporting SVG...'
-
-    // Add the missing export call
     await drawingStore.exportSVG('design')
-
-    exportStatus.value = 'SVG export successful!'
-    setTimeout(() => (exportStatus.value = ''), 3000)
   } catch (error) {
     exportStatus.value = `SVG export failed: ${error.message}`
     setTimeout(() => (exportStatus.value = ''), 5000)

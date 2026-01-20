@@ -22,8 +22,17 @@
 
     <router-view />
 
-    <Toolbar @show-import-dialog="isImportDialogVisible = true" />
+    <Toolbar
+      @show-import-dialog="isImportDialogVisible = true"
+      @show-stitch-settings="openStitchSettings"
+    />
     <ImportDialog :show="isImportDialogVisible" @close="isImportDialogVisible = false" />
+    <StitchSettingsDialog
+      :show="isStitchSettingsVisible"
+      :pathCount="(drawingStore.vectorizedPaths && drawingStore.vectorizedPaths.length) || 0"
+      @close="isStitchSettingsVisible = false"
+      @apply="isStitchSettingsVisible = false"
+    />
     <SaveDialog v-if="showSaveDialog" @close="showSaveDialog = false" />
     <AboutDialog v-if="showAboutDialog" @close="showAboutDialog = false" />
 
@@ -42,6 +51,7 @@ import ExportButtons from './components/ExportButtons.vue'
 import SaveDialog from './components/SaveDialog.vue'
 import AboutDialog from './components/AboutDialog.vue'
 import ImportDialog from './components/ImportDialog.vue'
+import StitchSettingsDialog from './components/StitchSettingsDialog.vue'
 import MachineControl from './components/MachineControl.vue'
 import { useDrawingStore } from '@/stores/drawing.js'
 import { useUIStore } from '@/stores/ui.js'
@@ -58,6 +68,7 @@ export default {
     SaveDialog,
     AboutDialog,
     ImportDialog,
+    StitchSettingsDialog,
     StitchToolbar,
     MachineControl,
   },
@@ -74,6 +85,7 @@ export default {
     const toastStore = useToastStore() 
     const isExportingGCode = ref(false)
     const isImportDialogVisible = ref(false)
+    const isStitchSettingsVisible = ref(false)
 
     async function exportGCode() {
       if (isExportingGCode.value) return
@@ -99,7 +111,13 @@ export default {
         toastStore.showError('Drawing is empty. Nothing to send.')
         return
       }
-      const gcode = generateGCode(drawingStore.shepherd.steps, 'stitchpad-design')
+      const gcode = generateGCode(
+        drawingStore.shepherd.steps,
+        'stitchpad-design',
+        drawingStore.machineBounds,
+        drawingStore.paperPx,
+        drawingStore.paperRect
+      )
       klipperService.sendGCode(gcode)
     }
 
@@ -108,6 +126,14 @@ export default {
       isImportDialogVisible.value = true
     })
 
+    function openStitchSettings() {
+      if (!drawingStore.vectorizedPaths || drawingStore.vectorizedPaths.length === 0) {
+        toastStore.showError('No vectorized paths available. Vectorize an image first.')
+        return
+      }
+      isStitchSettingsVisible.value = true
+    }
+
     return {
       drawingStore,
       uiStore,
@@ -115,6 +141,8 @@ export default {
       isExportingGCode,
       exportGCode,
       isImportDialogVisible,
+      isStitchSettingsVisible,
+      openStitchSettings,
       connectToMachine,
       sendToMachine,
     }

@@ -5,7 +5,8 @@ test('debug about dialog', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 })
   
   // Navigate to app with longer timeouts
-  await page.goto('/', { timeout: 60000, waitUntil: 'networkidle' })
+  await page.goto('/', { timeout: 60000, waitUntil: 'domcontentloaded' })
+  await expect(page.getByRole('button', { name: 'About' })).toBeVisible()
   
   // Log HTML content for debugging
   const bodyHTML = await page.evaluate(() => document.body.innerHTML)

@@ -36,9 +36,7 @@ test('should show side toolbar', async ({ page }) => {
 
 test('should show main toolbar buttons', async ({ page }) => {
   await page.goto('/')
-  
-  await page.waitForLoadState('networkidle')
-  
+
   await expect(page.locator('button', { hasText: 'Undo' })).toBeVisible()
   await expect(page.locator('button', { hasText: 'Grid' })).toBeVisible()
   await expect(page.locator('button', { hasText: 'Import' })).toBeVisible()
@@ -47,7 +45,6 @@ test('should show main toolbar buttons', async ({ page }) => {
 
 test('should show machine control buttons', async ({ page }) => {
   await page.goto('/')
-  await page.waitForLoadState('networkidle')
   
   // Test that machine control buttons are visible
   await expect(page.locator('button', { hasText: 'Connect Machine' })).toBeVisible()
@@ -56,7 +53,6 @@ test('should show machine control buttons', async ({ page }) => {
 
 test('should show export functionality', async ({ page }) => {
   await page.goto('/')
-  await page.waitForLoadState('networkidle')
   
   // Only test for SVG export button since DST/EXP are hidden
   await expect(page.locator('button', { hasText: 'Export SVG' })).toBeVisible()
@@ -88,7 +84,6 @@ test('should toggle side toolbar', async ({ page }) => {
 
 test('machine buttons should be clickable', async ({ page }) => {
   await page.goto('/')
-  await page.waitForLoadState('networkidle')
   
   const connectButton = page.locator('button', { hasText: 'Connect Machine' })
   const sendButton = page.locator('button', { hasText: 'Send to Machine' })

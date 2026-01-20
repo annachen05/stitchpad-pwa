@@ -1,5 +1,5 @@
 import { saveAs } from 'file-saver'
-import { validateDST, generateGCode } from '@/utils/exportUtils.js'
+import { validateDST, generateGCode, generatePaperSVG } from '@/utils/exportUtils.js'
 
 export class ExportService {
   static async exportDST(shepherd, name) {
@@ -23,9 +23,9 @@ export class ExportService {
     }
   }
 
-  static async exportSVG(shepherd, name) {
+  static async exportSVG(steps, name, paperPx, paperRect) {
     try {
-      const data = shepherd.toSVG()
+      const data = generatePaperSVG(steps, name, paperPx, paperRect)
       const blob = new Blob([data], { type: 'image/svg+xml' })
       saveAs(blob, `${name}.svg`)
     } catch (error) {
@@ -33,9 +33,9 @@ export class ExportService {
     }
   }
 
-  static async exportGCode(steps, name) {
+  static async exportGCode(steps, name, machineBounds, paperPx, paperRect) {
     try {
-      const data = generateGCode(steps, name)
+      const data = generateGCode(steps, name, machineBounds, paperPx, paperRect)
       const blob = new Blob([data], { type: 'text/plain' })
       saveAs(blob, `${name}.gcode`)
     } catch (error) {

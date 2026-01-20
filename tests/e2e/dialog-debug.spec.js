@@ -2,7 +2,8 @@ import { test, expect } from '@playwright/test'
 
 test('should find and click the About button', async ({ page }) => {
   await page.goto('/')
-  await page.waitForLoadState('networkidle')
+  // Avoid networkidle with Vite/HMR; wait for the About button instead
+  await page.getByRole('button', { name: 'About' }).waitFor()
   
   // Update locator to use 'About'
   const aboutButton = page.getByRole('button', { name: 'About' })

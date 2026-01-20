@@ -1,8 +1,11 @@
 import { defineStore } from 'pinia'
 import { TurtleShepherd } from '@/lib/app.js'
 import { ExportService } from '@/services/exportService.js'
-import { MACHINE_CONFIG } from '@/config/machine.js'
+import { MACHINE_CONFIG, MACHINE_BOUNDS_PORTRAIT, MACHINE_BOUNDS_LANDSCAPE } from '@/config/machine.js'
+import { DEFAULT_PAPER_ORIENTATION, GRID_PX, PAPER_PX_PORTRAIT, PAPER_PX_LANDSCAPE } from '@/config/paper.js'
 import { optimizeStitchPaths, analyzeStitches } from '@/utils/pathOptimizer.js'
+import { fitPathsToRect } from '@/utils/pathPlacement.js'
+import { simplifyPathToTargetCount } from '@/utils/pathSimplify.js'
 
 // Default view scale (used on initial load/reset). Increased by ~20%.
 const DEFAULT_VIEW_SCALE = 1.08
@@ -11,6 +14,9 @@ export const useDrawingStore = defineStore('drawing', {
   state: () => ({
     shepherd: new TurtleShepherd(MACHINE_CONFIG.maxX, MACHINE_CONFIG.maxY),
     scale: DEFAULT_VIEW_SCALE,
+    paperOrientation: DEFAULT_PAPER_ORIENTATION,
+    // Current paper rect in world coords (used for exports)
+    paperRect: { x: 0, y: 0, w: 0, h: 0 },
     // Viewport transform (for cursor-centered zoom / future pan)
     panX: 0,
     panY: 0,
@@ -27,9 +33,36 @@ export const useDrawingStore = defineStore('drawing', {
     // Separation of vectorization and stitching
     vectorizedPaths: null, // Stores raw vectorized paths (not stitches yet)
     vectorizationMetadata: null, // Stores bounds, scale info, etc.
+    showVectorizedOverlay: false, // When true, render vector paths overlay on canvas
+
+    // Optional simplification for vector paths (affects overlay + stitching)
+    vectorSimplifyEnabled: false,
+    // Progressive corner-preserving simplification:
+    // - Each level reduces points by ~8% (configurable) while preserving corners.
+    vectorSimplifyLevel: 0,
+    vectorSimplifyStepReduction: 0.08,
+    vectorSimplifyCornerAngleDeg: 120,
+
+    // Track whether the current stitch design was generated from vector paths
+    vectorStitchesApplied: false,
+    lastVectorStitchSettings: null,
+    _applyingVectorStitches: false,
+
+    // Undo snapshots for non-step operations (erase, Ctrl+L simplify, vector re-apply).
+    // We keep the existing step-based undo for normal drawing (shepherd.undoStep()).
+    undoStack: [],
+    redoStack: [],
+    _skipNextUndoSnapshot: false,
+    _inUndoRedo: false,
   }),
 
   getters: {
+    machineBounds: (state) => {
+      return state.paperOrientation === 'landscape' ? MACHINE_BOUNDS_LANDSCAPE : MACHINE_BOUNDS_PORTRAIT
+    },
+    paperPx: (state) => {
+      return state.paperOrientation === 'landscape' ? PAPER_PX_LANDSCAPE : PAPER_PX_PORTRAIT
+    },
     scaleAwareDistances: (state) => {
       const BASE_DIST_MIN = 8
       const BASE_DIST_MAX = 12
@@ -55,9 +88,107 @@ export const useDrawingStore = defineStore('drawing', {
         scale: state.backgroundScale,
       }
     },
+
+    effectiveVectorizedPaths: (state) => {
+      const paths = state.vectorizedPaths
+      if (!paths || paths.length === 0) return null
+
+      const level = Number.isFinite(state.vectorSimplifyLevel) ? state.vectorSimplifyLevel : 0
+      if (!state.vectorSimplifyEnabled || level <= 0) return paths
+
+      const stepReduction = Number.isFinite(state.vectorSimplifyStepReduction) ? state.vectorSimplifyStepReduction : 0.08
+      const clampedStepReduction = Math.min(0.25, Math.max(0.01, stepReduction))
+      const cornerAngleDeg = Number.isFinite(state.vectorSimplifyCornerAngleDeg) ? state.vectorSimplifyCornerAngleDeg : 120
+
+      const simplified = []
+      for (const path of paths) {
+        if (!path || path.length < 2) continue
+        const target = Math.max(2, Math.round(path.length * Math.pow(1 - clampedStepReduction, level)))
+        const sp = simplifyPathToTargetCount(path, target, { cornerAngleDeg })
+        if (sp && sp.length >= 2) simplified.push(sp)
+      }
+      return simplified.length ? simplified : paths
+    },
   },
 
   actions: {
+    setPaperRect(rect) {
+      if (!rect) return
+      const x = Number.isFinite(rect.x) ? rect.x : 0
+      const y = Number.isFinite(rect.y) ? rect.y : 0
+      const w = Number.isFinite(rect.w) ? rect.w : 0
+      const h = Number.isFinite(rect.h) ? rect.h : 0
+      this.paperRect = { x, y, w, h }
+    },
+    togglePaperOrientation() {
+      this.paperOrientation = this.paperOrientation === 'landscape' ? 'portrait' : 'landscape'
+      this.needsRecenter = true
+    },
+
+    // Rotate all stitches by 90° around the paper center when flipping orientation.
+    // This keeps the drawing "on the paper" and matches the visual flip (no scaling).
+    rotateDesignForOrientationFlip(oldRect, newRect, direction) {
+      if (!oldRect || !newRect) return
+      if (!Number.isFinite(oldRect.w) || !Number.isFinite(oldRect.h) || oldRect.w === 0 || oldRect.h === 0) return
+      if (!Number.isFinite(newRect.w) || !Number.isFinite(newRect.h) || newRect.w === 0 || newRect.h === 0) return
+
+      const steps = this.shepherd.steps || []
+      if (steps.length === 0) return
+
+      const snapToGrid = (v, origin) => {
+        const step = Number.isFinite(GRID_PX) && GRID_PX > 0 ? GRID_PX : 1
+        return origin + Math.round((v - origin) / step) * step
+      }
+
+      const oldCx = oldRect.x + oldRect.w / 2
+      const oldCy = oldRect.y + oldRect.h / 2
+      const newCx = newRect.x + newRect.w / 2
+      const newCy = newRect.y + newRect.h / 2
+
+      const oldPivot = {
+        x: snapToGrid(oldCx, oldRect.x),
+        y: snapToGrid(oldCy, oldRect.y),
+      }
+      const newPivot = {
+        x: snapToGrid(newCx, newRect.x),
+        y: snapToGrid(newCy, newRect.y),
+      }
+
+      const tx = newPivot.x - oldPivot.x
+      const ty = newPivot.y - oldPivot.y
+
+      const rotatePoint = (x, y) => {
+        const dx = x - oldPivot.x
+        const dy = y - oldPivot.y
+
+        // SVG coordinates are y-down.
+        // portrait -> landscape should map "top" to "right" (clockwise visual rotation).
+        let rdx, rdy
+        if (direction === 'cw') {
+          rdx = -dy
+          rdy = dx
+        } else {
+          rdx = dy
+          rdy = -dx
+        }
+
+        return { x: oldPivot.x + rdx + tx, y: oldPivot.y + rdy + ty }
+      }
+
+      this.shepherd.steps = steps.map((s) => {
+        const p1 = rotatePoint(s.x1, s.y1)
+        const p2 = rotatePoint(s.x2, s.y2)
+        return { ...s, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y }
+      })
+
+      const last = this.shepherd.steps[this.shepherd.steps.length - 1]
+      this.shepherd.currentX = last?.x2 ?? 0
+      this.shepherd.currentY = last?.y2 ?? 0
+
+      // Recompute extents
+      this.shepherd.maxX = Math.max(...this.shepherd.steps.map((s) => Math.max(s.x1, s.x2)), 0)
+      this.shepherd.maxY = Math.max(...this.shepherd.steps.map((s) => Math.max(s.y1, s.y2)), 0)
+    },
     // Viewport helpers
     setPan(x, y) {
       const nx = Number.isFinite(x) ? x : 0
@@ -122,10 +253,85 @@ export const useDrawingStore = defineStore('drawing', {
       this.resetView()
       this.backgroundImage = null
       this.backgroundScale = 1
+
+      this.undoStack = []
+      this.redoStack = []
+    },
+
+    // Clear stitches without touching the current viewport (pan/zoom) or background.
+    // Used for re-applying vector stitches (e.g. Ctrl+L) without "jumping" the canvas.
+    clearStitchesOnly() {
+      this.shepherd.clear()
+    },
+
+    _takeSnapshot(reason = '') {
+      const steps = Array.isArray(this.shepherd.steps) ? this.shepherd.steps : []
+      return {
+        reason,
+        steps: steps.map((s) => ({ ...s })),
+        currentX: this.shepherd.currentX,
+        currentY: this.shepherd.currentY,
+        maxX: this.shepherd.maxX,
+        maxY: this.shepherd.maxY,
+        vectorStitchesApplied: this.vectorStitchesApplied,
+        lastVectorStitchSettings: this.lastVectorStitchSettings ? { ...this.lastVectorStitchSettings } : null,
+        showVectorizedOverlay: this.showVectorizedOverlay,
+        vectorSimplifyEnabled: this.vectorSimplifyEnabled,
+        vectorSimplifyLevel: this.vectorSimplifyLevel,
+      }
+    },
+
+    _clearRedoOnEdit() {
+      if (this._inUndoRedo) return
+      if (this.redoStack.length > 0) {
+        this.redoStack = []
+      }
+    },
+
+    captureUndoSnapshot(reason = '') {
+      this._clearRedoOnEdit()
+      const snapshot = this._takeSnapshot(reason)
+      this.undoStack.push(snapshot)
+
+      // Cap memory growth.
+      const MAX_UNDO_SNAPSHOTS = 30
+      if (this.undoStack.length > MAX_UNDO_SNAPSHOTS) {
+        this.undoStack.splice(0, this.undoStack.length - MAX_UNDO_SNAPSHOTS)
+      }
+    },
+
+    _restoreUndoSnapshot(snapshot) {
+      if (!snapshot) return
+
+      this.shepherd.steps = Array.isArray(snapshot.steps) ? snapshot.steps.map((s) => ({ ...s })) : []
+      this.shepherd.currentX = Number.isFinite(snapshot.currentX) ? snapshot.currentX : 0
+      this.shepherd.currentY = Number.isFinite(snapshot.currentY) ? snapshot.currentY : 0
+      this.shepherd.maxX = Number.isFinite(snapshot.maxX) ? snapshot.maxX : 0
+      this.shepherd.maxY = Number.isFinite(snapshot.maxY) ? snapshot.maxY : 0
+
+      this.vectorStitchesApplied = !!snapshot.vectorStitchesApplied
+      this.lastVectorStitchSettings = snapshot.lastVectorStitchSettings ? { ...snapshot.lastVectorStitchSettings } : null
+      this.showVectorizedOverlay = !!snapshot.showVectorizedOverlay
+      this.vectorSimplifyEnabled = !!snapshot.vectorSimplifyEnabled
+      this.vectorSimplifyLevel = Number.isFinite(snapshot.vectorSimplifyLevel) ? snapshot.vectorSimplifyLevel : 0
     },
 
     undo() {
+      this._inUndoRedo = true
+      try {
+      // Prefer snapshot undo for non-step operations (erase, simplify, vector re-apply).
+      if (this.undoStack.length > 0) {
+        this.redoStack.push(this._takeSnapshot('redo'))
+        const snapshot = this.undoStack.pop()
+        this._restoreUndoSnapshot(snapshot)
+        return
+      }
+
+      this.redoStack.push(this._takeSnapshot('redo'))
+
+      // Fallback: step-based undo for normal drawing.
       this.shepherd.undoStep()
+      this.vectorStitchesApplied = false
       if (this.shepherd.steps.length > 0) {
         const lastStep = this.shepherd.steps[this.shepherd.steps.length - 1]
         this.shepherd.currentX = lastStep.x2
@@ -134,17 +340,54 @@ export const useDrawingStore = defineStore('drawing', {
         this.shepherd.currentX = 0
         this.shepherd.currentY = 0
       }
+      } finally {
+        this._inUndoRedo = false
+      }
+    },
+
+    redo() {
+      if (this.redoStack.length === 0) return
+
+      this._inUndoRedo = true
+      try {
+        this.undoStack.push(this._takeSnapshot('undo'))
+        const snapshot = this.redoStack.pop()
+        this._restoreUndoSnapshot(snapshot)
+      } finally {
+        this._inUndoRedo = false
+      }
     },
 
     addLine(x1, y1, x2, y2, penDown) {
       this.shepherd.moveTo(x1, y1, x2, y2, penDown)
+
+      // Any new edits invalidate redo history.
+      if (!this._applyingVectorStitches) {
+        this._clearRedoOnEdit()
+      }
+
+      if (!this._applyingVectorStitches) {
+        this.vectorStitchesApplied = false
+      }
     },
  
     addPoint(x, y) {
       this.shepherd.addPoint(x, y)
+
+      if (!this._applyingVectorStitches) {
+        this._clearRedoOnEdit()
+      }
+
+      if (!this._applyingVectorStitches) {
+        this.vectorStitchesApplied = false
+      }
     },
 
-    eraseStitchesInRadius(x, y, radius) {
+    eraseStitchesInRadius(x, y, radius, captureUndo = false) {
+      if (captureUndo) {
+        this.captureUndoSnapshot('erase')
+      }
+
       const originalCount = this.shepherd.steps.length
       
       this.shepherd.steps = this.shepherd.steps.filter(step => {
@@ -168,6 +411,8 @@ export const useDrawingStore = defineStore('drawing', {
         this.shepherd.maxY = 0
       }
 
+      this.vectorStitchesApplied = false
+
       return deletedCount
     },
 
@@ -183,22 +428,34 @@ export const useDrawingStore = defineStore('drawing', {
     },
 
     async exportSVG(name = 'design') {
-      const shepherd = this.getOptimizedShepherd()
-      await ExportService.exportSVG(shepherd, name)
+      const steps = this.optimizePathsEnabled ? optimizeStitchPaths(this.shepherd.steps) : this.shepherd.steps
+      await ExportService.exportSVG(steps, name, this.paperPx, this.paperRect)
     },
 
     async exportGCode(name = 'design') {
       const steps = this.optimizePathsEnabled 
         ? optimizeStitchPaths(this.shepherd.steps)
         : this.shepherd.steps
-      await ExportService.exportGCode(steps, name)
+      await ExportService.exportGCode(steps, name, this.machineBounds, this.paperPx, this.paperRect)
     },
 
     // Helper to get shepherd with optimized paths if enabled
     getOptimizedShepherd() {
       if (this.optimizePathsEnabled) {
         const optimizedSteps = optimizeStitchPaths(this.shepherd.steps)
-        return { ...this.shepherd, steps: optimizedSteps }
+
+        // IMPORTANT: Do not spread a class instance into a plain object.
+        // That drops prototype methods (toSVG/toDST/...) and breaks exports.
+        const s = new TurtleShepherd()
+        s.steps = optimizedSteps
+        if (s.steps.length > 0) {
+          const last = s.steps[s.steps.length - 1]
+          s.currentX = last.x2
+          s.currentY = last.y2
+          s.maxX = Math.max(...s.steps.map((st) => Math.max(st.x1, st.x2)), 0)
+          s.maxY = Math.max(...s.steps.map((st) => Math.max(st.y1, st.y2)), 0)
+        }
+        return s
       }
       return this.shepherd
     },
@@ -307,6 +564,12 @@ export const useDrawingStore = defineStore('drawing', {
     setVectorizedPaths(paths, metadata = null) {
       this.vectorizedPaths = paths
       this.vectorizationMetadata = metadata
+      this.showVectorizedOverlay = !!(paths && paths.length)
+      this.vectorStitchesApplied = false
+
+      // Reset progressive simplification for new vectorization.
+      this.vectorSimplifyEnabled = false
+      this.vectorSimplifyLevel = 0
       console.log('📦 Vectorized paths stored:', {
         pathCount: paths?.length,
         metadata
@@ -317,6 +580,47 @@ export const useDrawingStore = defineStore('drawing', {
     clearVectorizedPaths() {
       this.vectorizedPaths = null
       this.vectorizationMetadata = null
+      this.showVectorizedOverlay = false
+    },
+
+    setVectorizedOverlayVisible(visible) {
+      this.showVectorizedOverlay = !!visible
+    },
+
+    // Ctrl+L / Cmd+L: each press increases simplification level.
+    stepVectorSimplify() {
+      // Make Ctrl+L undoable.
+      this.captureUndoSnapshot('simplify')
+
+      this.vectorSimplifyEnabled = true
+      const nextLevel = (Number.isFinite(this.vectorSimplifyLevel) ? this.vectorSimplifyLevel : 0) + 1
+      this.vectorSimplifyLevel = Math.max(0, Math.min(nextLevel, 50))
+
+      // Make the effect visible immediately:
+      // - If the current stitches were generated from vector paths, reapply using last settings.
+      // - Otherwise show the vector overlay (if vector paths exist) so the user sees the simplification.
+      if (this.vectorStitchesApplied && this.lastVectorStitchSettings && this.vectorizedPaths && this.shepherd.steps.length > 0) {
+        // Avoid double snapshot (we already captured above).
+        this._skipNextUndoSnapshot = true
+        this.applyVectorizedPathsAsStitches(this.lastVectorStitchSettings)
+        return
+      }
+
+      if (this.vectorizedPaths && this.vectorizedPaths.length > 0) {
+        this.showVectorizedOverlay = true
+      }
+    },
+
+    setVectorSimplifyLevel(level) {
+      const n = Number.isFinite(level) ? level : 0
+      const clamped = Math.max(0, Math.min(Math.floor(n), 50))
+      this.vectorSimplifyLevel = clamped
+      this.vectorSimplifyEnabled = clamped > 0
+    },
+
+    resetVectorSimplify() {
+      this.vectorSimplifyEnabled = false
+      this.vectorSimplifyLevel = 0
     },
 
     // NEW: Apply vectorized paths as stitches with settings
@@ -326,10 +630,20 @@ export const useDrawingStore = defineStore('drawing', {
         return
       }
 
+      if (!this._skipNextUndoSnapshot) {
+        this.captureUndoSnapshot('applyVectors')
+      }
+
+      // Persist last settings so keyboard shortcuts can re-apply.
+      this.lastVectorStitchSettings = { ...stitchSettings }
+      this.vectorStitchesApplied = true
+      this._applyingVectorStitches = true
+
       const {
         stitchType = 'running',
         stitchLength = 3.0,
         scale = 1.0,
+        autoFitToCanvas = true,
       } = stitchSettings
 
       console.log('🎯 Applying vectorized paths as stitches:', {
@@ -339,19 +653,45 @@ export const useDrawingStore = defineStore('drawing', {
         scale
       })
 
-      // Clear existing stitches
-      this.clear()
+      try {
+        // Clear existing stitches
+        this.clearStitchesOnly()
 
-      // Convert paths to stitches based on type
-      for (const path of this.vectorizedPaths) {
-        if (stitchType === 'running') {
-          // Running stitch: interpolate points based on stitch length
-          this.addRunningStitchPath(path, stitchLength, scale)
+      // Place paths onto the paper rect in world coordinates.
+      // This ensures the stitched output matches the vector overlay placement.
+      const meta = this.vectorizationMetadata
+      const baseScale = Number.isFinite(meta?.outputScale)
+        ? meta.outputScale
+        : (Number.isFinite(meta?.settings?.outputScale) ? meta.settings.outputScale : 1.0)
+      const bounds = meta?.bounds ?? null
+
+      const sourcePaths = this.effectiveVectorizedPaths || this.vectorizedPaths
+
+      const placedPaths = fitPathsToRect(sourcePaths, this.paperRect, {
+        bounds: this.vectorSimplifyEnabled ? null : bounds,
+        autoFit: !!autoFitToCanvas,
+        margin: 0.9,
+        userScale: baseScale * scale,
+      })
+
+        // Convert paths to stitches based on type
+        for (const path of placedPaths) {
+          if (stitchType === 'running') {
+            // Running stitch: interpolate points based on stitch length
+            // Scale is already applied in placedPaths.
+            this.addRunningStitchPath(path, stitchLength, 1.0)
+          }
+          // TODO: Add other stitch types (satin, fill) later
         }
-        // TODO: Add other stitch types (satin, fill) later
-      }
 
-      console.log('✅ Applied stitches:', this.shepherd.steps.length)
+        // Once stitches exist, hide the vector overlay so we don't show both.
+        this.showVectorizedOverlay = false
+
+        console.log('✅ Applied stitches:', this.shepherd.steps.length)
+      } finally {
+        this._applyingVectorStitches = false
+        this._skipNextUndoSnapshot = false
+      }
     },
 
     // NEW: Helper function to add running stitch with proper interpolation

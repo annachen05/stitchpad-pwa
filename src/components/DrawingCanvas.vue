@@ -226,6 +226,20 @@
 
         <!-- Stitches (clipped to paper) -->
         <g clip-path="url(#paper-clip)">
+          <!-- Vectorized paths overlay (no stitch dots) -->
+          <path
+            v-for="(d, i) in vectorOverlayPathDs"
+            :key="'vec-' + i"
+            :d="d"
+            fill="none"
+            stroke="#7a0081"
+            :stroke-width="getScaleAwareLineWidth(true)"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            opacity="0.85"
+            pointer-events="none"
+          />
+
           <!-- Render each step as individual line segments -->
           <line
             v-for="(step, i) in visibleSteps"
@@ -273,7 +287,9 @@ import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useDrawingStore } from '@/stores/drawing.js'
 import { useUIStore } from '@/stores/ui.js'
 
-import { PAPER_PX, GRID_PX } from '@/config/paper.js'
+import { PAPER_PX_PORTRAIT, PAPER_PX_LANDSCAPE, GRID_PX } from '@/config/paper.js'
+
+import { fitPathsToRect } from '@/utils/pathPlacement.js'
 
 // ### ADD THIS IMPORT ###
 import { lineInterpolate } from '@/services/embroidery.js'  // your old adaptive routine
@@ -352,13 +368,17 @@ const BASE_LINE_WIDTH = 2
 // User zoom from drawing store (buttons control this)
 const userScale = computed(() => drawingStore.scale || 1)
 
+const paperPx = computed(() => {
+  return drawingStore.paperOrientation === 'landscape' ? PAPER_PX_LANDSCAPE : PAPER_PX_PORTRAIT
+})
+
 // Auto-fit the paper to the available viewport (minus margin), then apply user zoom.
 const fitScale = computed(() => {
   const availableW = Math.max(1, width.value - PAPER_SHADOW_MARGIN * 2)
   const availableH = Math.max(1, height.value - PAPER_SHADOW_MARGIN * 2)
 
-  const sx = availableW / PAPER_PX.w
-  const sy = availableH / PAPER_PX.h
+  const sx = availableW / paperPx.value.w
+  const sy = availableH / paperPx.value.h
 
   // Never upscale beyond 1 by default; user can zoom in.
   return Math.min(sx, sy, 1)
@@ -408,8 +428,52 @@ const gridSubSpacing = computed(() => {
 })
 
 const paperRect = computed(() => {
-  const w = PAPER_PX.w
-  const h = PAPER_PX.h
+  return computePaperRectFor(paperPx.value.w, paperPx.value.h)
+})
+
+// Vector overlay: show vectorized paths on the canvas without converting to stitches.
+const vectorOverlayPathDs = computed(() => {
+  if (!drawingStore.showVectorizedOverlay) return []
+  const paths = drawingStore.effectiveVectorizedPaths || drawingStore.vectorizedPaths
+  if (!paths || paths.length === 0) return []
+
+  const meta = drawingStore.vectorizationMetadata
+  const bounds = meta?.bounds ?? null
+  const autoFit = meta?.autoFit ?? meta?.settings?.autoFitToCanvas ?? true
+  const outputScale = Number.isFinite(meta?.outputScale)
+    ? meta.outputScale
+    : (Number.isFinite(meta?.settings?.outputScale) ? meta.settings.outputScale : 1)
+
+  const placedPaths = fitPathsToRect(paths, paperRect.value, {
+    bounds,
+    autoFit: !!autoFit,
+    margin: 0.9,
+    userScale: outputScale,
+  })
+
+  const ds = []
+  for (const path of placedPaths) {
+    if (!path || path.length < 2) continue
+    const [sx, sy] = path[0]
+    let d = `M ${sx} ${sy}`
+    for (let i = 1; i < path.length; i++) {
+      const [px, py] = path[i]
+      d += ` L ${px} ${py}`
+    }
+    ds.push(d)
+  }
+  return ds
+})
+
+watch(
+  paperRect,
+  (r) => {
+    drawingStore.setPaperRect(r)
+  },
+  { immediate: true }
+)
+
+function computePaperRectFor(w, h) {
   const totalHeight = height.value
   const totalWidth = width.value
 
@@ -438,7 +502,34 @@ const paperRect = computed(() => {
   }
 
   return { x, y, w, h }
-})
+}
+
+
+// When orientation flips, keep existing stitches in the same relative place on the paper.
+watch(
+  () => drawingStore.paperOrientation,
+  (next, prev) => {
+    if (!prev || next === prev) return
+
+    const prevPx = prev === 'landscape' ? PAPER_PX_LANDSCAPE : PAPER_PX_PORTRAIT
+    const nextPx = next === 'landscape' ? PAPER_PX_LANDSCAPE : PAPER_PX_PORTRAIT
+
+    const oldRect = computePaperRectFor(prevPx.w, prevPx.h)
+    const newRect = computePaperRectFor(nextPx.w, nextPx.h)
+
+    const dir = prev === 'portrait' && next === 'landscape' ? 'cw' : 'ccw'
+    drawingStore.rotateDesignForOrientationFlip(oldRect, newRect, dir)
+
+    // Keep drawing continuation stable after remap
+    const steps = drawingStore.shepherd.steps
+    if (steps && steps.length > 0) {
+      const last = steps[steps.length - 1]
+      lastPos.value = { x: last.x2, y: last.y2 }
+    } else {
+      lastPos.value = null
+    }
+  }
+)
 
 const backgroundTransform = computed(() => {
   const s = drawingStore.backgroundScale || 1
@@ -741,7 +832,7 @@ function onPointerDown(e) {
   }
 
   if (uiStore.isEraser) {
-    const deleted = drawingStore.eraseStitchesInRadius(pos.x, pos.y, eraserSize.value / effectiveScale.value)
+    const deleted = drawingStore.eraseStitchesInRadius(pos.x, pos.y, eraserSize.value / effectiveScale.value, true)
     console.log(`🧹 Erased ${deleted} stitches`)
     return
   }
@@ -774,7 +865,7 @@ function onPointerMove(e) {
     }
     
     if (insidePaper && drawing && !isOverStitchControl(e)) {
-      const deleted = drawingStore.eraseStitchesInRadius(pos.x, pos.y, eraserSize.value / effectiveScale.value)
+      const deleted = drawingStore.eraseStitchesInRadius(pos.x, pos.y, eraserSize.value / effectiveScale.value, false)
       if (deleted > 0) {
         console.log(`🧹 Erased ${deleted} stitches`)
       }
@@ -822,7 +913,7 @@ function onTouchStart(e) {
   }
   
   if (uiStore.isEraser) {
-    const deleted = drawingStore.eraseStitchesInRadius(pos.x, pos.y, eraserSize.value / effectiveScale.value)
+    const deleted = drawingStore.eraseStitchesInRadius(pos.x, pos.y, eraserSize.value / effectiveScale.value, true)
     console.log(`🧹 Erased ${deleted} stitches`)
     return
   }
@@ -928,6 +1019,21 @@ function handleGlobalKeydown(event) {
   if ((event.ctrlKey || event.metaKey) && event.key === 'z') {
     drawingStore.undo()
     lastPos.value = null
+    event.preventDefault()
+    return
+  }
+
+  // Ctrl+Y (Windows) or Cmd+Shift+Z (macOS): redo
+  if ((event.ctrlKey && event.key.toLowerCase() === 'y') || (event.metaKey && event.shiftKey && event.key.toLowerCase() === 'z')) {
+    drawingStore.redo()
+    lastPos.value = null
+    event.preventDefault()
+    return
+  }
+
+  // Ctrl+L / Cmd+L: Progressive vector path simplification (each press simplifies more)
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'l') {
+    drawingStore.stepVectorSimplify()
     event.preventDefault()
     return
   }

@@ -351,9 +351,13 @@ function handleVectorizationComplete(data) {
   if (data && data.pathCount) {
     vectorizationPathCount.value = data.pathCount
   }
-  
-  // Open Stitch Settings Dialog
-  showStitchSettingsDialog.value = true
+
+  // Do NOT auto-open stitch settings.
+  // Vectorization and stitching are separate steps; user can click "Configure Stitching" when ready.
+  showStitchSettingsDialog.value = false
+
+  // Close the import dialog so the vector overlay is immediately visible on the canvas.
+  closeDialog()
 }
 
 function handleStitchSettingsApplied(settings) {

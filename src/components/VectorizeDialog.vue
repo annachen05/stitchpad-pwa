@@ -403,7 +403,7 @@
       <!-- Actions -->
       <div class="dialog-buttons">
         <button @click="saveVectorization" :disabled="!previewImage || isProcessing" class="btn btn-primary">
-          {{ isProcessing ? 'Processing...' : '💾 Save Vectorization' }}
+          {{ isProcessing ? 'Processing...' : 'Save Vectorization' }}
         </button>
         <button @click="closeDialog" class="btn btn-secondary" :disabled="isProcessing">
           Cancel

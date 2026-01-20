@@ -106,7 +106,13 @@ async function sendCurrentDesign() {
   }
 
   try {
-    const gcode = generateGCode(drawingStore.shepherd.steps, 'stitchpad-design')
+    const gcode = generateGCode(
+      drawingStore.shepherd.steps,
+      'stitchpad-design',
+      drawingStore.machineBounds,
+      drawingStore.paperPx,
+      drawingStore.paperRect
+    )
     await machineStore.sendDesign(gcode)
   } catch (error) {
     toastStore.showError(`Failed to send design: ${error.message}`)
