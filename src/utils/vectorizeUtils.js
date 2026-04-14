@@ -752,6 +752,128 @@ export function skeletonize(binary, width, height, maxIterations = 100) {
   return skeleton
 }
 
+function getSkeletonNeighbors(skeleton, width, height, x, y) {
+  const neighbors = []
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (dx === 0 && dy === 0) continue
+      const nx = x + dx
+      const ny = y + dy
+      if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
+      if (skeleton[ny * width + nx] === 1) {
+        neighbors.push([nx, ny])
+      }
+    }
+  }
+  return neighbors
+}
+
+function getSkeletonNeighbors4(skeleton, width, height, x, y) {
+  const out = []
+  const n4 = [
+    [x, y - 1],
+    [x + 1, y],
+    [x, y + 1],
+    [x - 1, y],
+  ]
+
+  for (const [nx, ny] of n4) {
+    if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
+    if (skeleton[ny * width + nx] === 1) out.push([nx, ny])
+  }
+
+  return out
+}
+
+/**
+ * Remove short dangling skeleton branches (spurs) that often appear as
+ * duplicate tiny lines after tracing.
+ */
+export function pruneSkeletonSpurs(
+  skeleton,
+  width,
+  height,
+  maxBranchLength = 8,
+  maxPasses = 2,
+  continuationDotThreshold = 0.7,
+) {
+  if (!skeleton || width <= 0 || height <= 0) return skeleton
+
+  const out = new Uint8Array(skeleton)
+
+  for (let pass = 0; pass < maxPasses; pass++) {
+    let changed = false
+
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const idx = y * width + x
+        if (out[idx] !== 1) continue
+
+        const startNeighbors = getSkeletonNeighbors4(out, width, height, x, y)
+        // Endpoint candidates only
+        if (startNeighbors.length !== 1) continue
+
+        const branchPixels = [[x, y]]
+        let prev = [x, y]
+        let curr = startNeighbors[0]
+        let steps = 1
+        let hitJunction = false
+        let hasStrongContinuation = false
+
+        while (steps <= maxBranchLength) {
+          const [cx, cy] = curr
+          const n = getSkeletonNeighbors4(out, width, height, cx, cy)
+
+          // Exclude the previous pixel to move forward.
+          const forward = n.filter(([nx, ny]) => nx !== prev[0] || ny !== prev[1])
+          branchPixels.push([cx, cy])
+
+          if (forward.length === 0) {
+            // Dead-end chain; removable if short.
+            break
+          }
+          if (forward.length >= 2) {
+            // Junction reached.
+            const incomingDx = cx - prev[0]
+            const incomingDy = cy - prev[1]
+            const incomingLen = Math.sqrt(incomingDx * incomingDx + incomingDy * incomingDy) || 1
+
+            let maxDot = -1
+            for (const [fx, fy] of forward) {
+              const vx = fx - cx
+              const vy = fy - cy
+              const vLen = Math.sqrt(vx * vx + vy * vy) || 1
+              const dot = (incomingDx * vx + incomingDy * vy) / (incomingLen * vLen)
+              if (dot > maxDot) maxDot = dot
+            }
+            hasStrongContinuation = maxDot >= continuationDotThreshold
+            hitJunction = true
+            break
+          }
+
+          prev = curr
+          curr = forward[0]
+          steps++
+        }
+
+        const removable = steps <= maxBranchLength && hitJunction && !hasStrongContinuation
+        if (!removable) continue
+
+        // Keep the junction pixel (last), remove only the dangling branch.
+        for (let i = 0; i < branchPixels.length - 1; i++) {
+          const [rx, ry] = branchPixels[i]
+          out[ry * width + rx] = 0
+          changed = true
+        }
+      }
+    }
+
+    if (!changed) break
+  }
+
+  return out
+}
+
 function countTransitions(neighbors) {
   let count = 0
   for (let i = 0; i < neighbors.length; i++) {
@@ -960,6 +1082,489 @@ export function fitBezierCurves(path, errorThreshold = 1.0) {
   return simplifyPath(path, errorThreshold)
 }
 
+function pathLength(path) {
+  if (!path || path.length < 2) return 0
+  let len = 0
+  for (let i = 0; i < path.length - 1; i++) {
+    const dx = path[i + 1][0] - path[i][0]
+    const dy = path[i + 1][1] - path[i][1]
+    len += Math.sqrt(dx * dx + dy * dy)
+  }
+  return len
+}
+
+function pathBounds(path) {
+  if (!path || path.length === 0) {
+    return { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, height: 0 }
+  }
+
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+
+  for (const [x, y] of path) {
+    minX = Math.min(minX, x)
+    minY = Math.min(minY, y)
+    maxX = Math.max(maxX, x)
+    maxY = Math.max(maxY, y)
+  }
+
+  return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: Math.max(0, maxX - minX),
+    height: Math.max(0, maxY - minY),
+  }
+}
+
+function reversePointPath(path) {
+  return [...path].reverse()
+}
+
+function endpointDistance(aPath, bPath, aAtEnd = true, bAtStart = true) {
+  const a = aAtEnd ? aPath[aPath.length - 1] : aPath[0]
+  const b = bAtStart ? bPath[0] : bPath[bPath.length - 1]
+  const dx = b[0] - a[0]
+  const dy = b[1] - a[1]
+  return Math.sqrt(dx * dx + dy * dy)
+}
+
+function sortPathsNearestNeighbor(paths) {
+  if (!paths || paths.length <= 1) return paths || []
+
+  const remaining = [...paths]
+  const ordered = [remaining.shift()]
+
+  while (remaining.length > 0) {
+    const current = ordered[ordered.length - 1]
+    let bestIndex = 0
+    let bestDistance = Infinity
+    let reverseNext = false
+
+    for (let i = 0; i < remaining.length; i++) {
+      const candidate = remaining[i]
+      const dStart = endpointDistance(current, candidate, true, true)
+      if (dStart < bestDistance) {
+        bestDistance = dStart
+        bestIndex = i
+        reverseNext = false
+      }
+
+      const dEnd = endpointDistance(current, candidate, true, false)
+      if (dEnd < bestDistance) {
+        bestDistance = dEnd
+        bestIndex = i
+        reverseNext = true
+      }
+    }
+
+    let next = remaining.splice(bestIndex, 1)[0]
+    if (reverseNext) next = reversePointPath(next)
+    ordered.push(next)
+  }
+
+  return ordered
+}
+
+function mergeNearbyPaths(paths, maxGap = 3.5) {
+  if (!paths || paths.length <= 1) return paths || []
+
+  const remaining = [...paths]
+  const merged = []
+
+  while (remaining.length > 0) {
+    let current = remaining.shift()
+    let changed = true
+
+    while (changed && remaining.length > 0) {
+      changed = false
+      let mergeIndex = -1
+      let bestDistance = maxGap
+      let mergeMode = 'end-start'
+
+      for (let i = 0; i < remaining.length; i++) {
+        const candidate = remaining[i]
+        const dEndStart = endpointDistance(current, candidate, true, true)
+        if (dEndStart < bestDistance) {
+          bestDistance = dEndStart
+          mergeIndex = i
+          mergeMode = 'end-start'
+        }
+
+        const dEndEnd = endpointDistance(current, candidate, true, false)
+        if (dEndEnd < bestDistance) {
+          bestDistance = dEndEnd
+          mergeIndex = i
+          mergeMode = 'end-end'
+        }
+
+        const dStartStart = endpointDistance(current, candidate, false, true)
+        if (dStartStart < bestDistance) {
+          bestDistance = dStartStart
+          mergeIndex = i
+          mergeMode = 'start-start'
+        }
+
+        const dStartEnd = endpointDistance(current, candidate, false, false)
+        if (dStartEnd < bestDistance) {
+          bestDistance = dStartEnd
+          mergeIndex = i
+          mergeMode = 'start-end'
+        }
+      }
+
+      if (mergeIndex >= 0) {
+        let candidate = remaining.splice(mergeIndex, 1)[0]
+
+        if (mergeMode === 'end-start') {
+          current = current.concat(candidate)
+        } else if (mergeMode === 'end-end') {
+          candidate = reversePointPath(candidate)
+          current = current.concat(candidate)
+        } else if (mergeMode === 'start-start') {
+          current = reversePointPath(current).concat(candidate)
+        } else {
+          current = candidate.concat(current)
+        }
+
+        changed = true
+      }
+    }
+
+    merged.push(current)
+  }
+
+  return merged
+}
+
+export function cleanupVectorPaths(paths, options = {}) {
+  const {
+    minPathLength = 4,
+    minPathPoints = 3,
+    mergePathGap = 3.5,
+    sortPaths = true,
+    imageWidth = null,
+    imageHeight = null,
+    removeBorderArtifacts = false,
+    borderMarginPx = 2,
+    borderCoverageThreshold = 0.65,
+  } = options
+
+  if (!paths || paths.length === 0) return []
+
+  let cleaned = paths.filter((path) => {
+    if (!path || path.length < Math.max(2, minPathPoints)) return false
+    return pathLength(path) >= minPathLength
+  })
+
+  if (removeBorderArtifacts && Number.isFinite(imageWidth) && Number.isFinite(imageHeight) && imageWidth > 0 && imageHeight > 0) {
+    cleaned = cleaned.filter((path) => {
+      const b = pathBounds(path)
+      const touchesBorder =
+        b.minX <= borderMarginPx ||
+        b.minY <= borderMarginPx ||
+        b.maxX >= imageWidth - 1 - borderMarginPx ||
+        b.maxY >= imageHeight - 1 - borderMarginPx
+
+      if (!touchesBorder) return true
+
+      const coverageX = b.width / imageWidth
+      const coverageY = b.height / imageHeight
+
+      // Drop long border-hugging paths (common PDF page-edge artifact), keep normal content.
+      return !(coverageX >= borderCoverageThreshold || coverageY >= borderCoverageThreshold)
+    })
+  }
+
+  cleaned = mergeNearbyPaths(cleaned, mergePathGap)
+
+  if (sortPaths) {
+    cleaned = sortPathsNearestNeighbor(cleaned)
+  }
+
+  return cleaned
+}
+
+function cropImageDataToContent(imageData, options = {}) {
+  const {
+    whiteThreshold = 246,
+    alphaThreshold = 8,
+    padding = 10,
+    minContentRatio = 0.02,
+  } = options
+
+  const { width, height, data } = imageData
+  let minX = width
+  let minY = height
+  let maxX = -1
+  let maxY = -1
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4
+      const r = data[i]
+      const g = data[i + 1]
+      const b = data[i + 2]
+      const a = data[i + 3]
+      const luminance = Math.round(0.299 * r + 0.587 * g + 0.114 * b)
+
+      const isInk = a <= alphaThreshold || luminance < whiteThreshold
+      if (!isInk) continue
+
+      minX = Math.min(minX, x)
+      minY = Math.min(minY, y)
+      maxX = Math.max(maxX, x)
+      maxY = Math.max(maxY, y)
+    }
+  }
+
+  if (maxX < minX || maxY < minY) {
+    return { imageData, cropX: 0, cropY: 0, cropped: false }
+  }
+
+  const rawW = maxX - minX + 1
+  const rawH = maxY - minY + 1
+  const contentRatio = (rawW * rawH) / Math.max(1, width * height)
+  if (contentRatio < minContentRatio) {
+    return { imageData, cropX: 0, cropY: 0, cropped: false }
+  }
+
+  const cropX = Math.max(0, minX - padding)
+  const cropY = Math.max(0, minY - padding)
+  const cropMaxX = Math.min(width - 1, maxX + padding)
+  const cropMaxY = Math.min(height - 1, maxY + padding)
+  const croppedW = cropMaxX - cropX + 1
+  const croppedH = cropMaxY - cropY + 1
+
+  if (croppedW >= width * 0.98 && croppedH >= height * 0.98) {
+    return { imageData, cropX: 0, cropY: 0, cropped: false }
+  }
+
+  const out = new Uint8ClampedArray(croppedW * croppedH * 4)
+  for (let y = 0; y < croppedH; y++) {
+    for (let x = 0; x < croppedW; x++) {
+      const srcX = cropX + x
+      const srcY = cropY + y
+      const srcI = (srcY * width + srcX) * 4
+      const dstI = (y * croppedW + x) * 4
+      out[dstI] = data[srcI]
+      out[dstI + 1] = data[srcI + 1]
+      out[dstI + 2] = data[srcI + 2]
+      out[dstI + 3] = data[srcI + 3]
+    }
+  }
+
+  return {
+    imageData: { width: croppedW, height: croppedH, data: out },
+    cropX,
+    cropY,
+    cropped: true,
+  }
+}
+
+/**
+ * Analyze image luminance distribution and gradient strength.
+ * Used to auto-tune edge thresholds so users don't need manual tweaking.
+ */
+function analyzeImageForAutoTuning(imageData) {
+  const { width, height, data } = imageData
+  const gray = new Uint8Array(width * height)
+  const histogram = new Array(256).fill(0)
+
+  for (let i = 0; i < data.length; i += 4) {
+    const luminance = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2])
+    const gi = i / 4
+    gray[gi] = luminance
+    histogram[luminance]++
+  }
+
+  const total = width * height
+  const percentile = (p) => {
+    const target = Math.max(1, Math.floor(total * p))
+    let count = 0
+    for (let i = 0; i < histogram.length; i++) {
+      count += histogram[i]
+      if (count >= target) return i
+    }
+    return 255
+  }
+
+  const p10 = percentile(0.1)
+  const p50 = percentile(0.5)
+  const p90 = percentile(0.9)
+  const contrast = Math.max(1, p90 - p10)
+
+  // Sample Sobel-like gradient magnitude on a 1px neighborhood.
+  // A sparse sample keeps the operation fast even on larger images.
+  const samples = []
+  const step = Math.max(1, Math.floor(Math.max(width, height) / 280))
+  for (let y = 1; y < height - 1; y += step) {
+    for (let x = 1; x < width - 1; x += step) {
+      const gx =
+        -gray[(y - 1) * width + (x - 1)] + gray[(y - 1) * width + (x + 1)] +
+        -2 * gray[y * width + (x - 1)] + 2 * gray[y * width + (x + 1)] +
+        -gray[(y + 1) * width + (x - 1)] + gray[(y + 1) * width + (x + 1)]
+      const gy =
+        -gray[(y - 1) * width + (x - 1)] - 2 * gray[(y - 1) * width + x] - gray[(y - 1) * width + (x + 1)] +
+        gray[(y + 1) * width + (x - 1)] + 2 * gray[(y + 1) * width + x] + gray[(y + 1) * width + (x + 1)]
+      samples.push(Math.sqrt(gx * gx + gy * gy))
+    }
+  }
+
+  samples.sort((a, b) => a - b)
+  const sampleAt = (p) => {
+    if (!samples.length) return 0
+    const idx = Math.min(samples.length - 1, Math.floor(p * samples.length))
+    return samples[idx]
+  }
+
+  return {
+    p10,
+    p50,
+    p90,
+    contrast,
+    gradientP50: sampleAt(0.5),
+    gradientP75: sampleAt(0.75),
+    gradientP90: sampleAt(0.9),
+  }
+}
+
+/**
+ * Build source-specific defaults for robust vectorization.
+ * PDF/SVG are treated as line-art first to reduce manual setting changes.
+ */
+export function buildAutoVectorizationProfile(imageData, sourceType = 'image') {
+  const stats = analyzeImageForAutoTuning(imageData)
+  const isPdfSource = sourceType === 'pdf'
+  const isLineArtSource = sourceType === 'svg'
+
+  const cannyHigh = Math.max(70, Math.min(220, Math.round(stats.gradientP90 * 0.95)))
+  const cannyLow = Math.max(20, Math.min(cannyHigh - 10, Math.round(cannyHigh * 0.42)))
+  const edgeThreshold = Math.max(18, Math.min(95, Math.round(stats.gradientP75 * 0.35)))
+
+  if (isPdfSource) {
+    return {
+      // PDFs are often clean line-art already; thresholding plus centerline is more stable than Canny.
+      useCanny: false,
+      useEdgeDetection: false,
+      useAdaptiveThreshold: false,
+      autoThreshold: true,
+      threshold: 128,
+      cannyLowThreshold: cannyLow,
+      cannyHighThreshold: cannyHigh,
+      edgeThreshold,
+      enhanceContrastFirst: false,
+      useCLAHE: false,
+      claheClipLimit: 2.0,
+      claheTileSize: 8,
+      useUnsharpMask: false,
+      unsharpAmount: 1.5,
+      unsharpRadius: 1.0,
+      useMorphology: true,
+      morphologyOperation: 'closing',
+      morphologyIterations: 1,
+      medianFilterSize: 1,
+      applySkeletonize: true,
+      pruneSpurs: true,
+      spurMaxLength: 10,
+      spurIterations: 2,
+      simplifyTolerance: 1.5,
+      smoothIterations: 0,
+      minPathLength: 5,
+      minPathPoints: 3,
+      mergePathGap: 4,
+      sortPaths: true,
+      cropToContent: true,
+      removeBorderArtifacts: true,
+      useBezierFitting: false,
+      bezierError: 1.0,
+      _autoProfileName: 'pdf-line-art',
+    }
+  }
+
+  if (isLineArtSource) {
+    return {
+      // For imported line drawings, Canny + gap-closing keeps strokes consistent.
+      useCanny: true,
+      useEdgeDetection: false,
+      useAdaptiveThreshold: false,
+      autoThreshold: false,
+      threshold: Math.max(110, Math.min(190, Math.round((stats.p50 + stats.p10) / 2))),
+      cannyLowThreshold: cannyLow,
+      cannyHighThreshold: cannyHigh,
+      edgeThreshold,
+      enhanceContrastFirst: true,
+      useCLAHE: true,
+      claheClipLimit: stats.contrast < 60 ? 3.0 : 2.0,
+      claheTileSize: 8,
+      useUnsharpMask: true,
+      unsharpAmount: stats.contrast < 55 ? 2.0 : 1.5,
+      unsharpRadius: 1.0,
+      useMorphology: true,
+      morphologyOperation: 'closing',
+      morphologyIterations: 1,
+      medianFilterSize: 3,
+      applySkeletonize: true,
+      pruneSpurs: true,
+      spurMaxLength: 8,
+      spurIterations: 2,
+      simplifyTolerance: 1.8,
+      smoothIterations: 1,
+      minPathLength: 5,
+      minPathPoints: 3,
+      mergePathGap: 4,
+      sortPaths: true,
+      cropToContent: false,
+      removeBorderArtifacts: true,
+      useBezierFitting: false,
+      bezierError: 1.0,
+      _autoProfileName: 'line-art',
+    }
+  }
+
+  return {
+    // For photos/scans, adaptive thresholding plus opening reduces texture noise.
+    useCanny: false,
+    useEdgeDetection: false,
+    useAdaptiveThreshold: true,
+    autoThreshold: false,
+    threshold: 128,
+    adaptiveBlockSize: stats.contrast < 55 ? 19 : 15,
+    cannyLowThreshold: cannyLow,
+    cannyHighThreshold: cannyHigh,
+    edgeThreshold,
+    enhanceContrastFirst: true,
+    useCLAHE: stats.contrast < 70,
+    claheClipLimit: stats.contrast < 55 ? 2.8 : 2.0,
+    claheTileSize: 8,
+    useUnsharpMask: stats.contrast < 65,
+    unsharpAmount: 1.5,
+    unsharpRadius: 1.0,
+    useMorphology: true,
+    morphologyOperation: 'opening',
+    morphologyIterations: 1,
+    medianFilterSize: 3,
+    applySkeletonize: true,
+    pruneSpurs: false,
+    spurMaxLength: 8,
+    spurIterations: 1,
+    simplifyTolerance: 2.0,
+    smoothIterations: 2,
+    minPathLength: 4,
+    minPathPoints: 3,
+    mergePathGap: 3,
+    sortPaths: true,
+    cropToContent: false,
+    removeBorderArtifacts: false,
+    useBezierFitting: false,
+    bezierError: 1.0,
+    _autoProfileName: 'general-image',
+  }
+}
+
 /**
  * Resize image if too large to prevent freezing
  */
@@ -1034,7 +1639,19 @@ export async function vectorizeImage(imageElement, options = {}) {
     morphologyOperation = 'opening', // 'opening', 'closing', 'dilate', 'erode'
     morphologyIterations = 1,
     useBezierFitting = false,
-    bezierError = 1.0
+    bezierError = 1.0,
+    pruneSpurs = false,
+    spurMaxLength = 8,
+    spurIterations = 1,
+    cleanupPaths = true,
+    minPathLength = 4,
+    minPathPoints = 3,
+    mergePathGap = 3.5,
+    sortPaths = true,
+    cropToContent = false,
+    removeBorderArtifacts = false,
+    sourceType = 'image',
+    autoTuneForSource = false
   } = options
   
   // Resize image if too large
@@ -1059,23 +1676,108 @@ export async function vectorizeImage(imageElement, options = {}) {
   
   let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
   
+  let effectiveThreshold = threshold
+  let effectiveMedianFilterSize = medianFilterSize
+  let effectiveSimplifyTolerance = simplifyTolerance
+  let effectiveSmoothIterations = smoothIterations
+  let effectiveApplySkeletonize = applySkeletonize
+  let effectiveUseAdaptiveThreshold = useAdaptiveThreshold
+  let effectiveUseEdgeDetection = useEdgeDetection
+  let effectiveEnhanceContrastFirst = enhanceContrastFirst
+  let effectiveAutoThreshold = autoThreshold
+  let effectiveAdaptiveBlockSize = adaptiveBlockSize
+  let effectiveEdgeThreshold = edgeThreshold
+  let effectiveUseCLAHE = useCLAHE
+  let effectiveClaheClipLimit = claheClipLimit
+  let effectiveClaheTileSize = claheTileSize
+  let effectiveUseCanny = useCanny
+  let effectiveCannyLowThreshold = cannyLowThreshold
+  let effectiveCannyHighThreshold = cannyHighThreshold
+  let effectiveUseUnsharpMask = useUnsharpMask
+  let effectiveUnsharpAmount = unsharpAmount
+  let effectiveUnsharpRadius = unsharpRadius
+  let effectiveUseMorphology = useMorphology
+  let effectiveMorphologyOperation = morphologyOperation
+  let effectiveMorphologyIterations = morphologyIterations
+  let effectiveUseBezierFitting = useBezierFitting
+  let effectiveBezierError = bezierError
+  let effectivePruneSpurs = pruneSpurs
+  let effectiveSpurMaxLength = spurMaxLength
+  let effectiveSpurIterations = spurIterations
+  let effectiveCleanupPaths = cleanupPaths
+  let effectiveMinPathLength = minPathLength
+  let effectiveMinPathPoints = minPathPoints
+  let effectiveMergePathGap = mergePathGap
+  let effectiveSortPaths = sortPaths
+  let effectiveCropToContent = cropToContent
+  let effectiveRemoveBorderArtifacts = removeBorderArtifacts
+  let cropOffsetX = 0
+  let cropOffsetY = 0
+
+  if (autoTuneForSource) {
+    if (onProgress) onProgress('Auto-tuning vectorization settings...', 12)
+    const profile = buildAutoVectorizationProfile(imageData, sourceType)
+    effectiveThreshold = profile.threshold
+    effectiveMedianFilterSize = profile.medianFilterSize
+    effectiveSimplifyTolerance = profile.simplifyTolerance
+    effectiveSmoothIterations = profile.smoothIterations
+    effectiveApplySkeletonize = profile.applySkeletonize
+    effectiveUseAdaptiveThreshold = profile.useAdaptiveThreshold
+    effectiveUseEdgeDetection = profile.useEdgeDetection
+    effectiveEnhanceContrastFirst = profile.enhanceContrastFirst
+    effectiveAutoThreshold = profile.autoThreshold
+    effectiveAdaptiveBlockSize = profile.adaptiveBlockSize ?? effectiveAdaptiveBlockSize
+    effectiveEdgeThreshold = profile.edgeThreshold
+    effectiveUseCLAHE = profile.useCLAHE
+    effectiveClaheClipLimit = profile.claheClipLimit
+    effectiveClaheTileSize = profile.claheTileSize
+    effectiveUseCanny = profile.useCanny
+    effectiveCannyLowThreshold = profile.cannyLowThreshold
+    effectiveCannyHighThreshold = profile.cannyHighThreshold
+    effectiveUseUnsharpMask = profile.useUnsharpMask
+    effectiveUnsharpAmount = profile.unsharpAmount
+    effectiveUnsharpRadius = profile.unsharpRadius
+    effectiveUseMorphology = profile.useMorphology
+    effectiveMorphologyOperation = profile.morphologyOperation
+    effectiveMorphologyIterations = profile.morphologyIterations
+    effectiveUseBezierFitting = profile.useBezierFitting
+    effectiveBezierError = profile.bezierError
+    effectivePruneSpurs = profile.pruneSpurs ?? effectivePruneSpurs
+    effectiveSpurMaxLength = profile.spurMaxLength ?? effectiveSpurMaxLength
+    effectiveSpurIterations = profile.spurIterations ?? effectiveSpurIterations
+    effectiveMinPathLength = profile.minPathLength ?? effectiveMinPathLength
+    effectiveMinPathPoints = profile.minPathPoints ?? effectiveMinPathPoints
+    effectiveMergePathGap = profile.mergePathGap ?? effectiveMergePathGap
+    effectiveSortPaths = profile.sortPaths ?? effectiveSortPaths
+    effectiveCropToContent = profile.cropToContent ?? effectiveCropToContent
+    effectiveRemoveBorderArtifacts = profile.removeBorderArtifacts ?? effectiveRemoveBorderArtifacts
+  }
+
   // Professional preprocessing pipeline
   
   // 1. Apply unsharp masking for edge enhancement (optional)
-  if (useUnsharpMask) {
+  if (effectiveUseUnsharpMask) {
     if (onProgress) onProgress('Sharpening edges...', 15)
-    imageData = unsharpMask(imageData, unsharpAmount, unsharpRadius)
+    imageData = unsharpMask(imageData, effectiveUnsharpAmount, effectiveUnsharpRadius)
   }
   
   // 2. Enhance contrast - choose between CLAHE (professional) or standard histogram equalization
-  if (enhanceContrastFirst) {
-    if (useCLAHE) {
+  if (effectiveEnhanceContrastFirst) {
+    if (effectiveUseCLAHE) {
       if (onProgress) onProgress('Enhancing contrast (CLAHE)...', 20)
-      imageData = applyCLAHE(imageData, claheClipLimit, claheTileSize)
+      imageData = applyCLAHE(imageData, effectiveClaheClipLimit, effectiveClaheTileSize)
     } else {
       if (onProgress) onProgress('Enhancing contrast...', 20)
       imageData = enhanceContrast(imageData)
     }
+  }
+
+  if (effectiveCropToContent) {
+    if (onProgress) onProgress('Cropping empty margins...', 24)
+    const cropped = cropImageDataToContent(imageData)
+    imageData = cropped.imageData
+    cropOffsetX = cropped.cropX
+    cropOffsetY = cropped.cropY
   }
   
   let binary
@@ -1085,21 +1787,21 @@ export async function vectorizeImage(imageElement, options = {}) {
   // Choose detection method
   if (onProgress) onProgress('Detecting features...', 30)
   
-  if (useCanny) {
+  if (effectiveUseCanny) {
     // Use professional Canny edge detection
-    binary = cannyEdgeDetection(imageData, cannyLowThreshold, cannyHighThreshold)
-  } else if (useEdgeDetection) {
+    binary = cannyEdgeDetection(imageData, effectiveCannyLowThreshold, effectiveCannyHighThreshold)
+  } else if (effectiveUseEdgeDetection) {
     // Use edge detection for complex images
-    binary = detectEdges(imageData, edgeThreshold)
-  } else if (useAdaptiveThreshold) {
+    binary = detectEdges(imageData, effectiveEdgeThreshold)
+  } else if (effectiveUseAdaptiveThreshold) {
     // Use adaptive threshold for uneven lighting
-    binary = adaptiveThreshold(imageData, adaptiveBlockSize, 10)
+    binary = adaptiveThreshold(imageData, effectiveAdaptiveBlockSize, 10)
   } else {
     // Use standard threshold
-    let finalThreshold = threshold
+    let finalThreshold = effectiveThreshold
     
     // Auto-calculate threshold using Otsu's method
-    if (autoThreshold) {
+    if (effectiveAutoThreshold) {
       finalThreshold = calculateOtsuThreshold(imageData)
       console.log('Auto-calculated threshold:', finalThreshold)
     }
@@ -1109,39 +1811,59 @@ export async function vectorizeImage(imageElement, options = {}) {
   }
   
   // Apply morphological operations for noise removal and feature enhancement
-  if (useMorphology) {
-    if (onProgress) onProgress(`Applying morphological ${morphologyOperation}...`, 40)
-    switch (morphologyOperation) {
+  if (effectiveUseMorphology) {
+    if (onProgress) onProgress(`Applying morphological ${effectiveMorphologyOperation}...`, 40)
+    switch (effectiveMorphologyOperation) {
       case 'opening':
-        binary = morphologicalOpening(binary, width, height, morphologyIterations)
+        binary = morphologicalOpening(binary, width, height, effectiveMorphologyIterations)
         break
       case 'closing':
-        binary = morphologicalClosing(binary, width, height, morphologyIterations)
+        binary = morphologicalClosing(binary, width, height, effectiveMorphologyIterations)
         break
       case 'dilate':
-        binary = dilate(binary, width, height, morphologyIterations)
+        binary = dilate(binary, width, height, effectiveMorphologyIterations)
         break
       case 'erode':
-        binary = erode(binary, width, height, morphologyIterations)
+        binary = erode(binary, width, height, effectiveMorphologyIterations)
         break
     }
   }
   
   // Apply median filter
-  if (medianFilterSize > 0) {
+  if (effectiveMedianFilterSize > 0) {
     if (onProgress) onProgress('Applying noise filter...', 45)
-    binary = medianFilter(binary, width, height, medianFilterSize)
+    binary = medianFilter(binary, width, height, effectiveMedianFilterSize)
   }
   
   // Skeletonize
-  if (applySkeletonize) {
+  if (effectiveApplySkeletonize) {
     if (onProgress) onProgress('Tracing centerlines (this may take a while)...', 50)
     binary = skeletonize(binary, width, height)
+
+    if (effectivePruneSpurs) {
+      if (onProgress) onProgress('Removing tiny branch artifacts...', 60)
+      binary = pruneSkeletonSpurs(binary, width, height, effectiveSpurMaxLength, effectiveSpurIterations)
+    }
   }
   
   // Trace centerlines
   if (onProgress) onProgress('Extracting paths...', 75)
   let paths = traceCenterlines(binary, width, height)
+
+  // Adapted from Incrediplotter's post-vector pipeline idea:
+  // keep only meaningful strokes, merge close endpoints, and sort draw order.
+  if (effectiveCleanupPaths) {
+    if (onProgress) onProgress('Cleaning vector paths...', 80)
+    paths = cleanupVectorPaths(paths, {
+      minPathLength: effectiveMinPathLength,
+      minPathPoints: effectiveMinPathPoints,
+      mergePathGap: effectiveMergePathGap,
+      sortPaths: effectiveSortPaths,
+      imageWidth: width,
+      imageHeight: height,
+      removeBorderArtifacts: effectiveRemoveBorderArtifacts,
+    })
+  }
   
   // Simplify and smooth paths
   if (onProgress) onProgress('Simplifying and smoothing...', 85)
@@ -1149,13 +1871,13 @@ export async function vectorizeImage(imageElement, options = {}) {
     let processed = path
     
     // Apply Bezier curve fitting for smoother, more professional results
-    if (useBezierFitting) {
-      processed = fitBezierCurves(processed, bezierError)
+    if (effectiveUseBezierFitting) {
+      processed = fitBezierCurves(processed, effectiveBezierError)
     } else {
       // Traditional simplification and smoothing
-      processed = simplifyPath(processed, simplifyTolerance)
-      if (smoothIterations > 0) {
-        processed = smoothPath(processed, smoothIterations)
+      processed = simplifyPath(processed, effectiveSimplifyTolerance)
+      if (effectiveSmoothIterations > 0) {
+        processed = smoothPath(processed, effectiveSmoothIterations)
       }
     }
     
@@ -1166,7 +1888,14 @@ export async function vectorizeImage(imageElement, options = {}) {
   if (resizeInfo.resized) {
     if (onProgress) onProgress('Scaling to original size...', 95)
     paths = paths.map(path => 
-      path.map(([x, y]) => [x * resizeInfo.scale, y * resizeInfo.scale])
+      path.map(([x, y]) => [
+        (x + cropOffsetX) * resizeInfo.scale,
+        (y + cropOffsetY) * resizeInfo.scale,
+      ])
+    )
+  } else if (cropOffsetX !== 0 || cropOffsetY !== 0) {
+    paths = paths.map(path =>
+      path.map(([x, y]) => [x + cropOffsetX, y + cropOffsetY])
     )
   }
   

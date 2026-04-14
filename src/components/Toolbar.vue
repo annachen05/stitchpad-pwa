@@ -1,5 +1,9 @@
 <template>
-  <div class="toolbar toolbar-bottom">
+  <div
+    ref="toolbarBottomRef"
+    class="toolbar toolbar-bottom"
+    :class="{ 'is-overflowing': isBottomToolbarOverflowing }"
+  >
     <button class="btn btn-toolbar btn-toolbar-icon" @click="drawingStore.undo" title="Undo" aria-label="Undo">
       <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true">
         <path
@@ -169,11 +173,22 @@
 
 <script setup>
 // filepath: c:\Users\annam\Desktop\stitchpad-pwa\src\components\Toolbar.vue
+import { nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useDrawingStore } from '@/stores/drawing.js'
 import { useUIStore } from '@/stores/ui.js'
 
 const drawingStore = useDrawingStore()
 const uiStore = useUIStore()
+const toolbarBottomRef = ref(null)
+const isBottomToolbarOverflowing = ref(false)
+
+let toolbarResizeObserver = null
+
+function updateBottomToolbarOverflow() {
+  const el = toolbarBottomRef.value
+  if (!el) return
+  isBottomToolbarOverflowing.value = el.scrollWidth > el.clientWidth + 1
+}
 
 const emit = defineEmits(['show-import-dialog', 'show-stitch-settings'])
 
@@ -198,6 +213,29 @@ function showImportDialog() {
 function showStitchSettings() {
   emit('show-stitch-settings')
 }
+
+onMounted(() => {
+  nextTick(updateBottomToolbarOverflow)
+  window.addEventListener('resize', updateBottomToolbarOverflow)
+
+  if (typeof ResizeObserver !== 'undefined') {
+    toolbarResizeObserver = new ResizeObserver(updateBottomToolbarOverflow)
+    if (toolbarBottomRef.value) {
+      toolbarResizeObserver.observe(toolbarBottomRef.value)
+      for (const child of toolbarBottomRef.value.children) {
+        toolbarResizeObserver.observe(child)
+      }
+    }
+  }
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', updateBottomToolbarOverflow)
+  if (toolbarResizeObserver) {
+    toolbarResizeObserver.disconnect()
+    toolbarResizeObserver = null
+  }
+})
 </script>
 
 <style scoped>
@@ -223,10 +261,22 @@ function showStitchSettings() {
   flex-direction: row;
   align-items: center;
   justify-content: center;
-  padding: 1.6rem 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom, 0px));
   z-index: 100;
   gap: 1rem;
   border: none;
+}
+
+.toolbar-bottom.is-overflowing {
+  justify-content: flex-start;
+}
+
+.toolbar-bottom > * {
+  flex: 0 0 auto;
 }
 
 .btn-toolbar-icon {

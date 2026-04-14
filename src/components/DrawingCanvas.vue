@@ -164,8 +164,8 @@
 
       <!-- Apply viewport transform (scale + pan) so zoom can anchor under cursor/pinch center -->
       <g :transform="viewportTransform">
-        <!-- Workspace background (non-drawable) -->
-        <rect x="0" y="0" :width="width" :height="height" fill="#eeeeee" />
+        <!-- Workspace background is provided by CSS on .drawing-canvas for smoother rendering -->
+        <rect x="0" y="0" :width="width" :height="height" fill="transparent" />
 
         <!-- White paper (drawable) -->
         <rect
@@ -832,8 +832,13 @@ function onPointerDown(e) {
   }
 
   if (uiStore.isEraser) {
-    const deleted = drawingStore.eraseStitchesInRadius(pos.x, pos.y, eraserSize.value / effectiveScale.value, true)
-    console.log(`🧹 Erased ${deleted} stitches`)
+    const radius = eraserSize.value / effectiveScale.value
+    const deletedStitches = drawingStore.eraseStitchesInRadius(pos.x, pos.y, radius, true)
+    const deletedVectorPoints = drawingStore.eraseVectorizedPathsInRadius(pos.x, pos.y, radius)
+    const totalDeleted = deletedStitches + deletedVectorPoints
+    if (totalDeleted > 0) {
+      console.log(`🧹 Erased ${deletedStitches} stitches, ${deletedVectorPoints} vector points`)
+    }
     return
   }
 
@@ -865,9 +870,12 @@ function onPointerMove(e) {
     }
     
     if (insidePaper && drawing && !isOverStitchControl(e)) {
-      const deleted = drawingStore.eraseStitchesInRadius(pos.x, pos.y, eraserSize.value / effectiveScale.value, false)
-      if (deleted > 0) {
-        console.log(`🧹 Erased ${deleted} stitches`)
+      const radius = eraserSize.value / effectiveScale.value
+      const deletedStitches = drawingStore.eraseStitchesInRadius(pos.x, pos.y, radius, false)
+      const deletedVectorPoints = drawingStore.eraseVectorizedPathsInRadius(pos.x, pos.y, radius)
+      const totalDeleted = deletedStitches + deletedVectorPoints
+      if (totalDeleted > 0) {
+        console.log(`🧹 Erased ${deletedStitches} stitches, ${deletedVectorPoints} vector points`)
       }
     }
     return
@@ -913,8 +921,13 @@ function onTouchStart(e) {
   }
   
   if (uiStore.isEraser) {
-    const deleted = drawingStore.eraseStitchesInRadius(pos.x, pos.y, eraserSize.value / effectiveScale.value, true)
-    console.log(`🧹 Erased ${deleted} stitches`)
+    const radius = eraserSize.value / effectiveScale.value
+    const deletedStitches = drawingStore.eraseStitchesInRadius(pos.x, pos.y, radius, true)
+    const deletedVectorPoints = drawingStore.eraseVectorizedPathsInRadius(pos.x, pos.y, radius)
+    const totalDeleted = deletedStitches + deletedVectorPoints
+    if (totalDeleted > 0) {
+      console.log(`🧹 Erased ${deletedStitches} stitches, ${deletedVectorPoints} vector points`)
+    }
     return
   }
   
@@ -942,9 +955,12 @@ function onTouchMove(e) {
   }
   
   if (uiStore.isEraser) {
-    const deleted = drawingStore.eraseStitchesInRadius(pos.x, pos.y, eraserSize.value / effectiveScale.value)
-    if (deleted > 0) {
-      console.log(`🧹 Erased ${deleted} stitches`)
+    const radius = eraserSize.value / effectiveScale.value
+    const deletedStitches = drawingStore.eraseStitchesInRadius(pos.x, pos.y, radius)
+    const deletedVectorPoints = drawingStore.eraseVectorizedPathsInRadius(pos.x, pos.y, radius)
+    const totalDeleted = deletedStitches + deletedVectorPoints
+    if (totalDeleted > 0) {
+      console.log(`🧹 Erased ${deletedStitches} stitches, ${deletedVectorPoints} vector points`)
     }
     return
   }
@@ -1129,7 +1145,13 @@ function undo() {
   box-sizing: border-box;
   position: relative;
   overflow: hidden;
-  background: #eeeeee;
+  background-color: #e5e5e5;
+  background-image:
+    linear-gradient(to right, rgba(205, 205, 205, 0.55) 0%, rgba(205, 205, 205, 0) 22%),
+    linear-gradient(to left, rgba(205, 205, 205, 0.55) 0%, rgba(205, 205, 205, 0) 22%),
+    linear-gradient(to bottom, rgba(205, 205, 205, 0.55) 0%, rgba(205, 205, 205, 0) 22%),
+    linear-gradient(to top, rgba(205, 205, 205, 0.55) 0%, rgba(205, 205, 205, 0) 22%),
+    radial-gradient(circle at center, #eeeeee 0%, #e8e8e8 48%, #e2e2e2 100%);
   touch-action: none;
   -webkit-user-select: none;
   user-select: none;

@@ -4,11 +4,16 @@ import { ExportService } from '@/services/exportService.js'
 import { MACHINE_CONFIG, MACHINE_BOUNDS_PORTRAIT, MACHINE_BOUNDS_LANDSCAPE } from '@/config/machine.js'
 import { DEFAULT_PAPER_ORIENTATION, GRID_PX, PAPER_PX_PORTRAIT, PAPER_PX_LANDSCAPE } from '@/config/paper.js'
 import { optimizeStitchPaths, analyzeStitches } from '@/utils/pathOptimizer.js'
-import { fitPathsToRect } from '@/utils/pathPlacement.js'
+import { fitPathsToRect, calculatePathBounds } from '@/utils/pathPlacement.js'
 import { simplifyPathToTargetCount } from '@/utils/pathSimplify.js'
 
 // Default view scale (used on initial load/reset). Increased by ~20%.
 const DEFAULT_VIEW_SCALE = 1.08
+
+function clonePaths(paths) {
+  if (!Array.isArray(paths)) return null
+  return paths.map((path) => Array.isArray(path) ? path.map((pt) => [pt[0], pt[1]]) : [])
+}
 
 export const useDrawingStore = defineStore('drawing', {
   state: () => ({
@@ -122,7 +127,9 @@ export const useDrawingStore = defineStore('drawing', {
     },
     togglePaperOrientation() {
       this.paperOrientation = this.paperOrientation === 'landscape' ? 'portrait' : 'landscape'
-      this.needsRecenter = true
+      // Keep current pan/zoom when flipping orientation.
+      // DrawingCanvas will still clamp pan to keep some paper visible.
+      this.needsRecenter = false
     },
 
     // Rotate all stitches by 90° around the paper center when flipping orientation.
@@ -275,6 +282,8 @@ export const useDrawingStore = defineStore('drawing', {
         maxY: this.shepherd.maxY,
         vectorStitchesApplied: this.vectorStitchesApplied,
         lastVectorStitchSettings: this.lastVectorStitchSettings ? { ...this.lastVectorStitchSettings } : null,
+        vectorizedPaths: clonePaths(this.vectorizedPaths),
+        vectorizationMetadata: this.vectorizationMetadata ? { ...this.vectorizationMetadata } : null,
         showVectorizedOverlay: this.showVectorizedOverlay,
         vectorSimplifyEnabled: this.vectorSimplifyEnabled,
         vectorSimplifyLevel: this.vectorSimplifyLevel,
@@ -311,6 +320,8 @@ export const useDrawingStore = defineStore('drawing', {
 
       this.vectorStitchesApplied = !!snapshot.vectorStitchesApplied
       this.lastVectorStitchSettings = snapshot.lastVectorStitchSettings ? { ...snapshot.lastVectorStitchSettings } : null
+      this.vectorizedPaths = clonePaths(snapshot.vectorizedPaths)
+      this.vectorizationMetadata = snapshot.vectorizationMetadata ? { ...snapshot.vectorizationMetadata } : null
       this.showVectorizedOverlay = !!snapshot.showVectorizedOverlay
       this.vectorSimplifyEnabled = !!snapshot.vectorSimplifyEnabled
       this.vectorSimplifyLevel = Number.isFinite(snapshot.vectorSimplifyLevel) ? snapshot.vectorSimplifyLevel : 0
@@ -414,6 +425,99 @@ export const useDrawingStore = defineStore('drawing', {
       this.vectorStitchesApplied = false
 
       return deletedCount
+    },
+
+    eraseVectorizedPathsInRadius(x, y, radius, captureUndo = false) {
+      if (!Array.isArray(this.vectorizedPaths) || this.vectorizedPaths.length === 0) return 0
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(radius) || radius <= 0) return 0
+
+      const autoFit = this.vectorizationMetadata?.autoFit ?? this.vectorizationMetadata?.settings?.autoFitToCanvas ?? true
+      const outputScale = Number.isFinite(this.vectorizationMetadata?.outputScale)
+        ? this.vectorizationMetadata.outputScale
+        : (Number.isFinite(this.vectorizationMetadata?.settings?.outputScale) ? this.vectorizationMetadata.settings.outputScale : 1)
+
+      // Erase against raw vector paths so geometry edits are persistent and predictable.
+      this.vectorSimplifyEnabled = false
+      this.vectorSimplifyLevel = 0
+
+      const sourcePaths = this.vectorizedPaths
+      const originalBounds = this.vectorizationMetadata?.bounds || calculatePathBounds(sourcePaths)
+      const bounds = originalBounds
+      if (!bounds || !Number.isFinite(bounds.width) || !Number.isFinite(bounds.height) || bounds.width <= 0 || bounds.height <= 0) {
+        return 0
+      }
+
+      const targetRect = this.paperRect
+      const safeMargin = 0.9
+      const targetW = targetRect.w * safeMargin
+      const targetH = targetRect.h * safeMargin
+      const targetX = targetRect.x + (targetRect.w - targetW) / 2
+      const targetY = targetRect.y + (targetRect.h - targetH) / 2
+
+      let scale = outputScale
+      let offsetX = targetX
+      let offsetY = targetY
+
+      if (autoFit) {
+        const scaleX = targetW / bounds.width
+        const scaleY = targetH / bounds.height
+        const autoScale = Math.min(scaleX, scaleY)
+        scale = autoScale * outputScale
+
+        const scaledW = bounds.width * scale
+        const scaledH = bounds.height * scale
+        offsetX = targetRect.x + (targetRect.w - scaledW) / 2
+        offsetY = targetRect.y + (targetRect.h - scaledH) / 2
+      }
+
+      const hitRadius2 = radius * radius
+      const nextPaths = []
+      let removedPoints = 0
+
+      for (const path of sourcePaths) {
+        if (!Array.isArray(path) || path.length < 2) continue
+
+        let segment = []
+        for (const [px, py] of path) {
+          const tx = (px - bounds.minX) * scale + offsetX
+          const ty = (py - bounds.minY) * scale + offsetY
+          const dx = tx - x
+          const dy = ty - y
+          const inside = (dx * dx + dy * dy) <= hitRadius2
+
+          if (inside) {
+            removedPoints++
+            if (segment.length >= 2) nextPaths.push(segment)
+            segment = []
+          } else {
+            segment.push([px, py])
+          }
+        }
+
+        if (segment.length >= 2) nextPaths.push(segment)
+      }
+
+      if (removedPoints <= 0) return 0
+
+      if (captureUndo) {
+        this.captureUndoSnapshot('erase')
+      }
+
+      this.vectorizedPaths = nextPaths.length ? nextPaths : null
+
+      if (this.vectorizationMetadata) {
+        this.vectorizationMetadata = {
+          ...this.vectorizationMetadata,
+          // Keep original bounds stable so overlay placement does not drift while erasing.
+          bounds: originalBounds,
+          pathCount: this.vectorizedPaths ? this.vectorizedPaths.length : 0,
+        }
+      }
+
+      this.showVectorizedOverlay = !!(this.vectorizedPaths && this.vectorizedPaths.length)
+      this.vectorStitchesApplied = false
+
+      return removedPoints
     },
 
     // Export actions with path optimization
@@ -758,6 +862,18 @@ export const useDrawingStore = defineStore('drawing', {
         if (settings) this.lastVectorizeSettings = JSON.parse(settings)
       } catch (e) {
         console.warn('Failed to load vectorization settings:', e)
+      }
+    },
+
+    clearLastVectorization() {
+      this.lastVectorizedImage = null
+      this.lastVectorizeSettings = null
+
+      try {
+        localStorage.removeItem('lastVectorizedImage')
+        localStorage.removeItem('lastVectorizeSettings')
+      } catch (e) {
+        console.warn('Failed to clear vectorization settings:', e)
       }
     },
   },

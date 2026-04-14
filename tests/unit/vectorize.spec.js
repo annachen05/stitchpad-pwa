@@ -5,7 +5,10 @@ import {
   simplifyPath, 
   smoothPath,
   traceCenterlines,
-  skeletonize
+  skeletonize,
+  pruneSkeletonSpurs,
+  buildAutoVectorizationProfile,
+  cleanupVectorPaths
 } from '@/utils/vectorizeUtils.js'
 
 describe('Vectorization Utils', () => {
@@ -186,6 +189,121 @@ describe('Vectorization Utils', () => {
 
       expect(skeletonCount).toBeLessThan(originalCount)
       expect(skeletonCount).toBeGreaterThan(0)
+    })
+  })
+
+  describe('buildAutoVectorizationProfile', () => {
+    function createSimpleImageData(width, height, valueAt) {
+      const data = new Uint8ClampedArray(width * height * 4)
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const i = (y * width + x) * 4
+          const v = valueAt(x, y)
+          data[i] = v
+          data[i + 1] = v
+          data[i + 2] = v
+          data[i + 3] = 255
+        }
+      }
+      return { width, height, data }
+    }
+
+    it('should prefer line-art defaults for PDF sources', () => {
+      const imageData = createSimpleImageData(20, 20, (x, y) => ((x + y) % 6 === 0 ? 30 : 230))
+      const profile = buildAutoVectorizationProfile(imageData, 'pdf')
+
+      expect(profile.useCanny).toBe(false)
+      expect(profile.autoThreshold).toBe(true)
+      expect(profile.cropToContent).toBe(true)
+      expect(profile.removeBorderArtifacts).toBe(true)
+      expect(profile.pruneSpurs).toBe(true)
+      expect(profile.useMorphology).toBe(true)
+      expect(profile.morphologyOperation).toBe('closing')
+      expect(profile.applySkeletonize).toBe(true)
+      expect(profile._autoProfileName).toBe('pdf-line-art')
+    })
+
+    it('should prefer adaptive defaults for generic image sources', () => {
+      const imageData = createSimpleImageData(20, 20, (x, y) => ((x * y) % 9 === 0 ? 50 : 200))
+      const profile = buildAutoVectorizationProfile(imageData, 'image')
+
+      expect(profile.useCanny).toBe(false)
+      expect(profile.useAdaptiveThreshold).toBe(true)
+      expect(profile.useMorphology).toBe(true)
+      expect(profile.morphologyOperation).toBe('opening')
+      expect(profile.applySkeletonize).toBe(true)
+      expect(profile._autoProfileName).toBe('general-image')
+    })
+  })
+
+  describe('cleanupVectorPaths', () => {
+    it('should remove tiny noisy paths', () => {
+      const paths = [
+        [[0, 0], [10, 0], [20, 0]],
+        [[5, 5], [6, 5]], // too short and too few points
+      ]
+
+      const cleaned = cleanupVectorPaths(paths, {
+        minPathLength: 4,
+        minPathPoints: 3,
+        mergePathGap: 2,
+      })
+
+      expect(cleaned.length).toBe(1)
+      expect(cleaned[0].length).toBe(3)
+    })
+
+    it('should merge nearby endpoint paths', () => {
+      const paths = [
+        [[0, 0], [10, 0], [20, 0]],
+        [[21, 0], [30, 0], [40, 0]],
+      ]
+
+      const cleaned = cleanupVectorPaths(paths, {
+        minPathLength: 1,
+        minPathPoints: 2,
+        mergePathGap: 2,
+        sortPaths: false,
+      })
+
+      expect(cleaned.length).toBe(1)
+      expect(cleaned[0].length).toBeGreaterThanOrEqual(6)
+    })
+
+    it('should remove large border-touching artifact paths', () => {
+      const borderPath = [[0, 0], [99, 0], [99, 90], [0, 90], [0, 0]]
+      const starPath = [[30, 20], [40, 10], [50, 20], [40, 30], [30, 20]]
+
+      const cleaned = cleanupVectorPaths([borderPath, starPath], {
+        minPathLength: 1,
+        minPathPoints: 3,
+        mergePathGap: 2,
+        imageWidth: 100,
+        imageHeight: 100,
+        removeBorderArtifacts: true,
+        borderCoverageThreshold: 0.6,
+      })
+
+      expect(cleaned.length).toBe(1)
+      expect(cleaned[0]).toEqual(starPath)
+    })
+  })
+
+  describe('pruneSkeletonSpurs', () => {
+    it('should remove a short dangling branch', () => {
+      const width = 7
+      const height = 7
+      const skel = new Uint8Array(width * height).fill(0)
+
+      // Main vertical line (x=3, y=1..5)
+      for (let y = 1; y <= 5; y++) skel[y * width + 3] = 1
+      // Short spur to the right near the center
+      skel[3 * width + 4] = 1
+
+      const pruned = pruneSkeletonSpurs(skel, width, height, 2, 2)
+      expect(pruned[3 * width + 4]).toBe(0)
+      expect(pruned[2 * width + 3]).toBe(1)
+      expect(pruned[4 * width + 3]).toBe(1)
     })
   })
 })

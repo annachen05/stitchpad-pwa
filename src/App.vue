@@ -1,8 +1,13 @@
 <template>
   <div id="app-container">
     <!-- Use uiStore for sideToolbarOpen instead of local data -->
-    <button class="toolbar-toggle" @click="uiStore.toggleSideToolbar()">
-      {{ uiStore.sideToolbarOpen ? '⮜' : '⮞' }}
+    <button
+      class="toolbar-toggle"
+      :class="{ closed: !uiStore.sideToolbarOpen }"
+      :aria-label="uiStore.sideToolbarOpen ? 'Hide left toolbar' : 'Show left toolbar'"
+      @click="uiStore.toggleSideToolbar()"
+    >
+      {{ uiStore.sideToolbarOpen ? '<<' : '>>' }}
     </button>
     <div class="side-toolbar" :class="{ closed: !uiStore.sideToolbarOpen }">
       <button class="btn btn-toolbar" @click="showSaveDialog = true">Save</button>
@@ -167,6 +172,10 @@ export default {
   flex-direction: column;
   align-items: center;
   padding-top: 2rem;
+  padding-bottom: 6rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
   z-index: 10;
   transition:
     transform 0.3s cubic-bezier(0.4, 2, 0.6, 1),
@@ -190,6 +199,10 @@ export default {
   padding: 0.2em 0.5em;
   cursor: pointer;
   transition: background 0.2s;
+}
+
+.toolbar-toggle.closed {
+  left: 0;
 }
 .toolbar-toggle:hover {
   background: #b62b8c;

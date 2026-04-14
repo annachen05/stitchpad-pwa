@@ -3,22 +3,23 @@
     <div class="vectorize-dialog" @click.stop>
       <h3>Image Vectorization</h3>
       
-      <!-- Preview Section -->
-      <div class="preview-section">
-        <div class="preview-box">
-          <h4>Original</h4>
-          <img v-if="previewImage" :src="previewImage" alt="Original" />
-          <p v-else class="empty-state">No image loaded</p>
+      <div class="workspace-layout">
+        <!-- Preview Section -->
+        <div class="preview-section">
+          <div class="preview-box">
+            <h4>Original</h4>
+            <img v-if="previewImage" :src="previewImage" alt="Original" class="preview-media" :style="previewSurfaceStyle" />
+            <p v-else class="empty-state">No image loaded</p>
+          </div>
+          
+          <div class="preview-box">
+            <h4>Vectorized Preview {{ settings.autoFitToCanvas ? '(Auto-Fit)' : '' }}</h4>
+            <canvas ref="previewCanvas" class="preview-canvas preview-media" :style="previewSurfaceStyle"></canvas>
+          </div>
         </div>
         
-        <div class="preview-box">
-          <h4>Vectorized Preview {{ settings.autoFitToCanvas ? '(Auto-Fit)' : '' }}</h4>
-          <canvas ref="previewCanvas" class="preview-canvas"></canvas>
-        </div>
-      </div>
-      
-      <!-- Settings -->
-      <div class="settings-section">
+        <!-- Settings -->
+        <div class="settings-section">
         <h4>Vectorization Settings</h4>
         
         <!-- Auto-Fit to Canvas -->
@@ -33,6 +34,20 @@
           </label>
           <small class="setting-hint">Automatically scales and centers the design to fit the canvas. Disable for 1:1 pixel mapping.</small>
         </div>
+
+        <div class="setting-group highlight-setting">
+          <label>
+            <input
+              type="checkbox"
+              v-model="settings.autoTuneForSource"
+              @change="updatePreview"
+            />
+            Auto-Tune for Source Type
+          </label>
+          <small class="setting-hint">When enabled, source-aware defaults are applied automatically. Disable to manually tune extraction parameters.</small>
+        </div>
+
+        <template v-if="!settings.autoTuneForSource">
         
         <!-- Detection Mode -->
         <div class="setting-group">
@@ -41,7 +56,6 @@
             <select v-model="settings.detectionMode" @change="updatePreview">
               <option value="standard">Standard</option>
               <option value="adaptive">Adaptive</option>
-              <option value="edge">Edge Detection</option>
               <option value="canny">Advanced Edge Detection</option>
             </select>
           </label>
@@ -150,21 +164,6 @@
           </label>
         </div>
         
-        <!-- Edge Threshold -->
-        <div v-if="settings.detectionMode === 'edge'" class="setting-group">
-          <label>
-            Edge Sensitivity
-            <input 
-              type="range" 
-              min="10" 
-              max="100" 
-              v-model.number="settings.edgeThreshold"
-              @input="debouncedUpdatePreview"
-            />
-            <span class="value">{{ settings.edgeThreshold }}</span>
-          </label>
-        </div>
-        
         <!-- Canny Thresholds -->
         <div v-if="settings.detectionMode === 'canny'" class="setting-subgroup">
           <div class="setting-group">
@@ -203,8 +202,8 @@
             Noise Filter
             <input 
               type="range" 
-              min="0" 
-              max="9" 
+              min="1"
+              max="5"
               step="2"
               v-model.number="settings.medianFilterSize"
               @input="debouncedUpdatePreview"
@@ -299,9 +298,9 @@
             Simplification
             <input 
               type="range" 
-              min="0.5" 
-              max="10" 
-              step="0.5"
+              min="0.8"
+              max="5"
+              step="0.2"
               v-model.number="settings.simplifyTolerance"
               @input="debouncedUpdatePreview"
             />
@@ -315,44 +314,14 @@
             <input 
               type="range" 
               min="0" 
-              max="5" 
+              max="3" 
               v-model.number="settings.smoothIterations"
               @input="debouncedUpdatePreview"
             />
             <span class="value">{{ settings.smoothIterations }}</span>
           </label>
         </div>
-        
-        <!-- Bezier Curve Fitting -->
-        <div class="setting-group">
-          <label>
-            <input 
-              type="checkbox" 
-              v-model="settings.useBezierFitting"
-              @change="updatePreview"
-            />
-            Smooth Curves
-          </label>
-          <small class="setting-hint">Creates smoother curves</small>
-        </div>
-        
-        <div v-if="settings.useBezierFitting" class="setting-subgroup">
-          <div class="setting-group">
-            <label>
-              Curve Precision
-              <input 
-                type="range" 
-                min="0.5" 
-                max="5" 
-                step="0.5"
-                v-model.number="settings.bezierError"
-                @input="debouncedUpdatePreview"
-              />
-              <span class="value">{{ settings.bezierError }}</span>
-            </label>
-            <small class="setting-hint">Lower = more accurate</small>
-          </div>
-        </div>
+        </template>
         
         <div class="setting-group">
           <label>
@@ -363,6 +332,7 @@
               max="3" 
               step="0.1"
               v-model.number="settings.outputScale"
+              @input="debouncedUpdatePreview"
             />
             <span class="value">{{ settings.outputScale }}x</span>
           </label>
@@ -384,6 +354,7 @@
           </label>
           <small class="setting-hint">Higher = better quality but slower</small>
         </div>
+      </div>
       </div>
       
       <!-- Status -->
@@ -414,10 +385,11 @@
 </template>
 
 <script setup>
-import { ref, watch, nextTick } from 'vue'
+import { ref, watch, nextTick, computed } from 'vue'
 import { useDrawingStore } from '@/stores/drawing.js'
 import { VectorizeService } from '@/services/vectorizeService.js'
 import { useToastStore } from '@/stores/toast.js'
+import { buildAutoVectorizationProfile } from '@/utils/vectorizeUtils.js'
 
 const props = defineProps({
   show: Boolean,
@@ -438,33 +410,43 @@ const statusType = ref('info')
 const progressPercent = ref(0)
 const imageInfo = ref(null)
 
+const previewDimensions = computed(() => {
+  const paper = drawingStore.paperPx
+  const width = Number.isFinite(paper?.w) && paper.w > 0 ? paper.w : 400
+  const height = Number.isFinite(paper?.h) && paper.h > 0 ? paper.h : 300
+  return { width, height }
+})
+
+const previewSurfaceStyle = computed(() => ({
+  aspectRatio: `${previewDimensions.value.width} / ${previewDimensions.value.height}`,
+}))
+
 const defaultSettings = {
-  detectionMode: 'standard',
+  detectionMode: 'canny',
   threshold: 128,
   autoThreshold: true,
   enhanceContrast: true,
   adaptiveBlockSize: 15,
-  edgeThreshold: 30,
-  medianFilterSize: 3,
+  medianFilterSize: 1,
   applySkeletonize: true,
-  simplifyTolerance: 2.0,
-  smoothIterations: 2,
+  simplifyTolerance: 1.6,
+  smoothIterations: 1,
   outputScale: 1.0,
   maxImageSize: 1000,
   autoFitToCanvas: true,
-  useCLAHE: false,
+  useCLAHE: true,
   claheClipLimit: 2.0,
   claheTileSize: 8,
   cannyLowThreshold: 50,
   cannyHighThreshold: 150,
-  useUnsharpMask: false,
+  useUnsharpMask: true,
   unsharpAmount: 1.5,
   unsharpRadius: 1.0,
-  useMorphology: false,
+  useMorphology: true,
   morphologyOperation: 'opening',
   morphologyIterations: 1,
-  useBezierFitting: false,
-  bezierError: 1.0
+  sourceType: 'image',
+  autoTuneForSource: true
 }
 
 const settings = ref({ ...defaultSettings })
@@ -472,11 +454,69 @@ const settings = ref({ ...defaultSettings })
 let currentPaths = []
 let debounceTimer = null
 
+async function buildRecommendedProfileForCurrentImage() {
+  if (!previewImage.value) return null
+
+  const img = new Image()
+  img.src = previewImage.value
+  await new Promise((resolve, reject) => {
+    img.onload = resolve
+    img.onerror = () => reject(new Error('Failed to load image for auto profile'))
+  })
+
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')
+  canvas.width = img.width
+  canvas.height = img.height
+  ctx.drawImage(img, 0, 0)
+
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+  return buildAutoVectorizationProfile(imageData, settings.value.sourceType || 'image')
+}
+
+function applyProfileToManualSettings(profile) {
+  if (!profile) return
+
+  const nextDetectionMode = profile.useCanny
+    ? 'canny'
+    : (profile.useAdaptiveThreshold ? 'adaptive' : 'standard')
+
+  settings.value = {
+    ...settings.value,
+    detectionMode: nextDetectionMode,
+    threshold: profile.threshold ?? settings.value.threshold,
+    autoThreshold: profile.autoThreshold ?? settings.value.autoThreshold,
+    enhanceContrast: profile.enhanceContrastFirst ?? settings.value.enhanceContrast,
+    adaptiveBlockSize: profile.adaptiveBlockSize ?? settings.value.adaptiveBlockSize,
+    medianFilterSize: profile.medianFilterSize ?? settings.value.medianFilterSize,
+    applySkeletonize: profile.applySkeletonize ?? settings.value.applySkeletonize,
+    simplifyTolerance: profile.simplifyTolerance ?? settings.value.simplifyTolerance,
+    smoothIterations: profile.smoothIterations ?? settings.value.smoothIterations,
+    useCLAHE: profile.useCLAHE ?? settings.value.useCLAHE,
+    claheClipLimit: profile.claheClipLimit ?? settings.value.claheClipLimit,
+    claheTileSize: profile.claheTileSize ?? settings.value.claheTileSize,
+    cannyLowThreshold: profile.cannyLowThreshold ?? settings.value.cannyLowThreshold,
+    cannyHighThreshold: profile.cannyHighThreshold ?? settings.value.cannyHighThreshold,
+    useUnsharpMask: profile.useUnsharpMask ?? settings.value.useUnsharpMask,
+    unsharpAmount: profile.unsharpAmount ?? settings.value.unsharpAmount,
+    useMorphology: profile.useMorphology ?? settings.value.useMorphology,
+    morphologyOperation: profile.morphologyOperation ?? settings.value.morphologyOperation,
+    morphologyIterations: profile.morphologyIterations ?? settings.value.morphologyIterations,
+  }
+}
+
 // Watch for initial settings changes
 watch(() => props.initialSettings, (newSettings) => {
   if (newSettings) {
     console.log('Loading saved settings:', newSettings)
-    settings.value = { ...defaultSettings, ...newSettings }
+    const merged = { ...defaultSettings, ...newSettings }
+    if (merged.detectionMode === 'edge') {
+      merged.detectionMode = 'canny'
+    }
+    if (!newSettings.detectionMode && merged.autoTuneForSource) {
+      merged.detectionMode = (merged.sourceType === 'pdf' || merged.sourceType === 'svg') ? 'canny' : 'adaptive'
+    }
+    settings.value = merged
     
     if (previewImage.value) {
       nextTick(() => updatePreview())
@@ -495,8 +535,34 @@ watch(settings, (newSettings) => {
   }, 1000)
 }, { deep: true })
 
+watch(
+  () => settings.value.autoTuneForSource,
+  async (enabled, prevEnabled) => {
+    if (prevEnabled === undefined) return
+    if (enabled || !previewImage.value) return
+
+    try {
+      const profile = await buildRecommendedProfileForCurrentImage()
+      applyProfileToManualSettings(profile)
+    } catch (error) {
+      console.warn('Could not preserve auto-tuned settings for manual mode:', error)
+    }
+
+    nextTick(() => updatePreview())
+  }
+)
+
 watch(() => props.imageDataUrl, (newUrl) => {
   if (newUrl) {
+    if (!props.initialSettings) {
+      settings.value = {
+        ...defaultSettings,
+        sourceType: 'image',
+        autoTuneForSource: true,
+        detectionMode: 'adaptive',
+      }
+    }
+
     previewImage.value = newUrl
     
     // Check image dimensions
@@ -574,9 +640,7 @@ async function updatePreview() {
       enhanceContrastFirst: settings.value.enhanceContrast,
       autoThreshold: settings.value.autoThreshold && settings.value.detectionMode === 'standard',
       useAdaptiveThreshold: settings.value.detectionMode === 'adaptive',
-      useEdgeDetection: settings.value.detectionMode === 'edge',
       adaptiveBlockSize: settings.value.adaptiveBlockSize,
-      edgeThreshold: settings.value.edgeThreshold,
       maxImageSize: settings.value.maxImageSize,
       // Professional options
       useCLAHE: settings.value.useCLAHE,
@@ -591,8 +655,8 @@ async function updatePreview() {
       useMorphology: settings.value.useMorphology,
       morphologyOperation: settings.value.morphologyOperation,
       morphologyIterations: settings.value.morphologyIterations,
-      useBezierFitting: settings.value.useBezierFitting,
-      bezierError: settings.value.bezierError,
+      sourceType: settings.value.sourceType || 'image',
+      autoTuneForSource: settings.value.autoTuneForSource !== false,
       onProgress: (message, percent) => {
         status.value = message
         progressPercent.value = percent
@@ -610,14 +674,7 @@ async function updatePreview() {
     await drawPreview(paths)
     
     const totalPoints = paths.reduce((sum, path) => sum + path.length, 0)
-    const modeText = {
-      standard: settings.value.autoThreshold ? 'Auto-Threshold' : 'Manual Threshold',
-      adaptive: 'Adaptive Threshold',
-      edge: 'Edge Detection',
-      canny: 'Canny Edge Detection'
-    }[settings.value.detectionMode]
-    
-    status.value = `Preview generated (${modeText}): ${paths.length} paths, ${totalPoints} points`
+    status.value = `Preview generated: ${paths.length} paths, ${totalPoints} points`
     statusType.value = 'success'
     
   } catch (error) {
@@ -632,28 +689,39 @@ async function updatePreview() {
 async function drawPreview(paths) {
   const canvas = previewCanvas.value
   const ctx = canvas.getContext('2d')
+  const { width, height } = previewDimensions.value
+  const rect = canvas.getBoundingClientRect()
+  const cssWidth = Math.max(1, Math.round(rect.width || width))
+  const cssHeight = Math.max(1, Math.round(rect.height || height))
+  const pixelRatio = Math.min(window.devicePixelRatio || 1, 3)
   
-  // Set canvas size to a fixed preview size
-  canvas.width = 400
-  canvas.height = 400
+  // Render the preview at high DPI to avoid blurry/pixelated output.
+  canvas.style.width = `${cssWidth}px`
+  canvas.style.height = `${cssHeight}px`
+  canvas.width = Math.max(1, Math.round(cssWidth * pixelRatio))
+  canvas.height = Math.max(1, Math.round(cssHeight * pixelRatio))
+  ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+  ctx.clearRect(0, 0, cssWidth, cssHeight)
   
   // Draw grid background
   ctx.fillStyle = '#f5f5f5'
-  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  ctx.fillRect(0, 0, cssWidth, cssHeight)
   
   ctx.strokeStyle = '#e0e0e0'
   ctx.lineWidth = 0.5
   const gridSize = 20
-  for (let x = 0; x <= canvas.width; x += gridSize) {
+  for (let x = 0; x <= cssWidth; x += gridSize) {
     ctx.beginPath()
     ctx.moveTo(x, 0)
-    ctx.lineTo(x, canvas.height)
+    ctx.lineTo(x, cssHeight)
     ctx.stroke()
   }
-  for (let y = 0; y <= canvas.height; y += gridSize) {
+  for (let y = 0; y <= cssHeight; y += gridSize) {
     ctx.beginPath()
     ctx.moveTo(0, y)
-    ctx.lineTo(canvas.width, y)
+    ctx.lineTo(cssWidth, y)
     ctx.stroke()
   }
   
@@ -666,14 +734,16 @@ async function drawPreview(paths) {
     
     // Calculate auto-fit transformation
     const margin = 0.9
-    const scaleX = (canvas.width * margin) / bounds.width
-    const scaleY = (canvas.height * margin) / bounds.height
+    const scaleX = (cssWidth * margin) / bounds.width
+    const scaleY = (cssHeight * margin) / bounds.height
     const autoScale = Math.min(scaleX, scaleY)
+    const outputScale = Number.isFinite(settings.value.outputScale) ? settings.value.outputScale : 1
+    const previewScale = autoScale * outputScale
     
-    const scaledWidth = bounds.width * autoScale
-    const scaledHeight = bounds.height * autoScale
-    const offsetX = (canvas.width - scaledWidth) / 2
-    const offsetY = (canvas.height - scaledHeight) / 2
+    const scaledWidth = bounds.width * previewScale
+    const scaledHeight = bounds.height * previewScale
+    const offsetX = (cssWidth - scaledWidth) / 2
+    const offsetY = (cssHeight - scaledHeight) / 2
     
     // Draw paths with auto-fit
     ctx.strokeStyle = '#7a0081'
@@ -685,15 +755,15 @@ async function drawPreview(paths) {
       ctx.beginPath()
       const [x0, y0] = path[0]
       ctx.moveTo(
-        ((x0 - bounds.minX) * autoScale) + offsetX,
-        ((y0 - bounds.minY) * autoScale) + offsetY
+        ((x0 - bounds.minX) * previewScale) + offsetX,
+        ((y0 - bounds.minY) * previewScale) + offsetY
       )
       
       for (let i = 1; i < path.length; i++) {
         const [x, y] = path[i]
         ctx.lineTo(
-          ((x - bounds.minX) * autoScale) + offsetX,
-          ((y - bounds.minY) * autoScale) + offsetY
+          ((x - bounds.minX) * previewScale) + offsetX,
+          ((y - bounds.minY) * previewScale) + offsetY
         )
       }
       
@@ -711,15 +781,29 @@ async function drawPreview(paths) {
     // Draw without auto-fit (original scale, might be clipped)
     ctx.strokeStyle = '#7a0081'
     ctx.lineWidth = 2
+    const outputScale = Number.isFinite(settings.value.outputScale) ? settings.value.outputScale : 1
+
+    const bounds = VectorizeService.calculateBounds(paths)
+    if (!bounds) return
+    const centerX = cssWidth / 2
+    const centerY = cssHeight / 2
+    const drawingCenterX = bounds.minX + (bounds.width / 2)
+    const drawingCenterY = bounds.minY + (bounds.height / 2)
     
     for (const path of paths) {
       if (path.length < 2) continue
       
       ctx.beginPath()
-      ctx.moveTo(path[0][0], path[0][1])
+      ctx.moveTo(
+        ((path[0][0] - drawingCenterX) * outputScale) + centerX,
+        ((path[0][1] - drawingCenterY) * outputScale) + centerY
+      )
       
       for (let i = 1; i < path.length; i++) {
-        ctx.lineTo(path[i][0], path[i][1])
+        ctx.lineTo(
+          ((path[i][0] - drawingCenterX) * outputScale) + centerX,
+          ((path[i][1] - drawingCenterY) * outputScale) + centerY
+        )
       }
       
       ctx.stroke()
@@ -879,9 +963,12 @@ function checkImageSize() {
   background: white;
   border-radius: 8px;
   padding: 2rem;
-  max-width: 900px;
-  max-height: 90vh;
+  width: clamp(1100px, 96vw, 1600px);
+  max-width: calc(100vw - 1rem);
+  max-height: 95vh;
   overflow-y: auto;
+  scrollbar-gutter: stable;
+  box-sizing: border-box;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
@@ -890,11 +977,18 @@ function checkImageSize() {
   color: #333;
 }
 
+.workspace-layout {
+  display: grid;
+  grid-template-columns: minmax(520px, 1.2fr) minmax(360px, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+  margin-bottom: 1rem;
+}
+
 .preview-section {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
-  margin-bottom: 2rem;
 }
 
 .preview-box {
@@ -910,14 +1004,35 @@ function checkImageSize() {
   color: #666;
 }
 
-.preview-box img,
-.preview-canvas {
+.preview-media {
   width: 100%;
-  height: 250px;
-  object-fit: contain;
+  height: auto;
+  display: block;
   background: white;
   border: 1px solid #ddd;
   border-radius: 4px;
+}
+
+.preview-box img {
+  object-fit: contain;
+}
+
+@media (max-width: 1200px) {
+  .workspace-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 860px) {
+  .vectorize-dialog {
+    width: calc(100vw - 1rem);
+    padding: 1rem;
+    max-height: 94vh;
+  }
+
+  .preview-section {
+    grid-template-columns: 1fr;
+  }
 }
 
 .empty-state {
@@ -928,9 +1043,13 @@ function checkImageSize() {
 }
 
 .settings-section {
-  border-top: 1px solid #ddd;
-  padding-top: 1rem;
-  margin-bottom: 1rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 1rem;
+  max-height: 68vh;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  background: #fcfcfc;
 }
 
 .settings-section h4 {
@@ -964,6 +1083,10 @@ function checkImageSize() {
 .setting-group input[type="range"],
 .setting-group select {
   flex: 1;
+}
+
+.setting-group input[type="range"] {
+  accent-color: #8f8f8f;
 }
 
 .setting-group select {

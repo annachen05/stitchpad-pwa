@@ -19,11 +19,11 @@
         <input
           ref="fileInput"
           type="file"
-          accept=".dst,image/*"
+          accept="image/*,.svg,.pdf"
           @change="handleFileUpload"
           style="display: none"
         />
-        <p class="file-info">DST files or images (PNG, JPG, etc.)</p>
+        <p class="file-info">Image/SVG/PDF files (PNG, JPG, SVG, PDF)</p>
       </div>
 
       <!-- Re-vectorize Section -->
@@ -38,12 +38,12 @@
       </div>
 
       <!-- Configure Stitching Section (if vectorized paths exist) -->
-      <div v-if="drawingStore.vectorizedPaths" class="stitch-config-section">
+      <div v-if="hasVectorizedPaths" class="stitch-config-section">
         <button @click="openStitchSettings" class="stitch-config-btn">
           <span class="btn-icon">🧵</span>
           <div class="btn-text">
             <strong>Configure Stitching</strong>
-            <small>{{ drawingStore.vectorizedPaths.length }} vectorized paths ready</small>
+            <small>{{ vectorizationPathCountDisplay }} vectorized paths ready</small>
           </div>
         </button>
       </div>
@@ -163,6 +163,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useDrawingStore } from '@/stores/drawing.js'
 import VectorizeDialog from './VectorizeDialog.vue'
 import StitchSettingsDialog from './StitchSettingsDialog.vue'
+import { VectorizeService } from '@/services/vectorizeService.js'
 
 defineProps({
   show: {
@@ -182,11 +183,19 @@ const showVectorizeDialog = ref(false)
 const showStitchSettingsDialog = ref(false)
 const showImageChoiceDialog = ref(false)
 const imageToVectorize = ref(null)
+const importedSvgPaths = ref(null)
 const initialVectorizeSettings = ref(null)
+const importSourceType = ref('image')
 const vectorizationPathCount = ref(0)
 
 // Check if there's a design loaded
 const hasDesign = computed(() => drawingStore.shepherd.steps.length > 0)
+const hasVectorizedPaths = computed(
+  () => Array.isArray(drawingStore.vectorizedPaths) && drawingStore.vectorizedPaths.length > 0
+)
+const vectorizationPathCountDisplay = computed(() =>
+  hasVectorizedPaths.value ? drawingStore.vectorizedPaths.length : 0
+)
 
 // Load last vectorization on mount
 onMounted(() => {
@@ -215,32 +224,62 @@ function triggerFileInput() {
   fileInput.value?.click()
 }
 
-function processFile(file) {
+async function processFile(file) {
   if (!file) return
 
-  if (file.name.toLowerCase().endsWith('.dst')) {
-    // Handle DST files
-    drawingStore.importDST(file)
-    console.log('DST file imported:', file.name)
-  } else if (file.type.startsWith('image/')) {
-    // Handle image files
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      // Store image and show choice dialog
-      imageToVectorize.value = e.target.result
-      initialVectorizeSettings.value = null // Reset for new image
-      showImageChoiceDialog.value = true
+  const lowerName = file.name.toLowerCase()
+  const isPdf = file.type === 'application/pdf' || lowerName.endsWith('.pdf')
+  const isSvg = file.type === 'image/svg+xml' || lowerName.endsWith('.svg')
+  const isImage = file.type.startsWith('image/') || isSvg
+
+  if (!isPdf && !isImage) {
+    alert('Please select an image, SVG, or PDF file')
+    return
+  }
+
+  try {
+    let dataUrl = null
+    importedSvgPaths.value = null
+
+    if (isPdf) {
+      dataUrl = await renderPdfFirstPageToDataUrl(file)
+      importSourceType.value = 'pdf'
+      console.log('PDF first page rendered:', file.name)
+    } else if (isSvg) {
+      const svgText = await readFileAsText(file)
+      importedSvgPaths.value = extractVectorPathsFromSvg(svgText)
+      if (!importedSvgPaths.value.length) {
+        throw new Error('No vector paths found in SVG file')
+      }
+
+      dataUrl = await readFileAsDataUrl(file)
+      importSourceType.value = 'svg'
+      console.log('SVG loaded as vectors:', {
+        name: file.name,
+        paths: importedSvgPaths.value.length,
+      })
+    } else {
+      dataUrl = await readFileAsDataUrl(file)
+      importSourceType.value = 'image'
       console.log('Image loaded:', file.name)
     }
-    reader.readAsDataURL(file)
-  } else {
-    alert('Please select a DST file (.dst) or an image file')
+
+    imageToVectorize.value = dataUrl
+    initialVectorizeSettings.value = {
+      sourceType: importSourceType.value,
+      autoTuneForSource: true,
+      detectionMode: (importSourceType.value === 'pdf' || importSourceType.value === 'svg') ? 'canny' : 'adaptive',
+    }
+    showImageChoiceDialog.value = true
+  } catch (error) {
+    console.error('Import failed:', error)
+    alert(`Failed to import file: ${error.message}`)
   }
 }
 
-function handleFileUpload(event) {
+async function handleFileUpload(event) {
   const file = event.target.files[0]
-  processFile(file)
+  await processFile(file)
   
   // Reset file input
   event.target.value = ''
@@ -265,14 +304,180 @@ function onDragLeave(event) {
   }
 }
 
-function onDrop(event) {
+async function onDrop(event) {
   event.preventDefault()
   isDragOver.value = false
   
   const files = event.dataTransfer.files
   if (files.length > 0) {
-    processFile(files[0])
+    await processFile(files[0])
   }
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => resolve(e.target.result)
+    reader.onerror = () => reject(new Error('Could not read file'))
+    reader.readAsDataURL(file)
+  })
+}
+
+function readFileAsText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => resolve(e.target.result)
+    reader.onerror = () => reject(new Error('Could not read file as text'))
+    reader.readAsText(file)
+  })
+}
+
+function extractVectorPathsFromSvg(svgText) {
+  const parser = new DOMParser()
+  const parsed = parser.parseFromString(svgText, 'image/svg+xml')
+  const parseError = parsed.querySelector('parsererror')
+  if (parseError) {
+    throw new Error('Invalid SVG format')
+  }
+
+  const sourceSvg = parsed.documentElement
+  if (!sourceSvg || sourceSvg.tagName.toLowerCase() !== 'svg') {
+    throw new Error('SVG root element missing')
+  }
+
+  const host = document.createElement('div')
+  host.style.position = 'fixed'
+  host.style.left = '-10000px'
+  host.style.top = '-10000px'
+  host.style.width = '1px'
+  host.style.height = '1px'
+  host.style.opacity = '0'
+  host.style.pointerEvents = 'none'
+  document.body.appendChild(host)
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+
+  const viewBox = sourceSvg.getAttribute('viewBox')
+  if (viewBox) {
+    svg.setAttribute('viewBox', viewBox)
+    const [minX, minY, vbWidth, vbHeight] = viewBox.split(/[\s,]+/).map(Number)
+    if (Number.isFinite(vbWidth) && Number.isFinite(vbHeight) && vbWidth > 0 && vbHeight > 0) {
+      svg.setAttribute('width', String(vbWidth))
+      svg.setAttribute('height', String(vbHeight))
+      svg.setAttribute('data-min-x', String(Number.isFinite(minX) ? minX : 0))
+      svg.setAttribute('data-min-y', String(Number.isFinite(minY) ? minY : 0))
+    }
+  }
+
+  const widthAttr = sourceSvg.getAttribute('width')
+  const heightAttr = sourceSvg.getAttribute('height')
+  if (!svg.getAttribute('width')) {
+    svg.setAttribute('width', widthAttr || '1000')
+  }
+  if (!svg.getAttribute('height')) {
+    svg.setAttribute('height', heightAttr || '1000')
+  }
+
+  while (sourceSvg.firstChild) {
+    svg.appendChild(document.importNode(sourceSvg.firstChild, true))
+    sourceSvg.removeChild(sourceSvg.firstChild)
+  }
+
+  host.appendChild(svg)
+
+  try {
+    const elements = svg.querySelectorAll('path, line, polyline, polygon, rect, circle, ellipse')
+    const resultPaths = []
+    const baseStep = 2.0
+    const viewMinX = Number.parseFloat(svg.getAttribute('data-min-x') || '0') || 0
+    const viewMinY = Number.parseFloat(svg.getAttribute('data-min-y') || '0') || 0
+
+    for (const element of elements) {
+      const style = window.getComputedStyle(element)
+      if (style.display === 'none' || style.visibility === 'hidden') continue
+
+      if (typeof element.getTotalLength !== 'function' || typeof element.getPointAtLength !== 'function') {
+        continue
+      }
+
+      let totalLength = 0
+      try {
+        totalLength = element.getTotalLength()
+      } catch {
+        continue
+      }
+
+      if (!Number.isFinite(totalLength) || totalLength <= 0) continue
+
+      const sampleCount = Math.max(2, Math.ceil(totalLength / baseStep))
+      const ctm = element.getCTM()
+      const points = []
+
+      for (let i = 0; i <= sampleCount; i++) {
+        const distance = (i / sampleCount) * totalLength
+        const p = element.getPointAtLength(distance)
+
+        let x = p.x
+        let y = p.y
+        if (ctm) {
+          const transformed = new DOMPoint(p.x, p.y).matrixTransform(ctm)
+          x = transformed.x
+          y = transformed.y
+        }
+
+        x -= viewMinX
+        y -= viewMinY
+
+        const last = points[points.length - 1]
+        if (!last || Math.hypot(x - last[0], y - last[1]) > 0.2) {
+          points.push([x, y])
+        }
+      }
+
+      if (points.length >= 2) {
+        resultPaths.push(points)
+      }
+    }
+
+    return resultPaths
+  } finally {
+    host.remove()
+  }
+}
+
+async function renderPdfFirstPageToDataUrl(file) {
+  const [{ getDocument, GlobalWorkerOptions }, workerModule] = await Promise.all([
+    import('pdfjs-dist'),
+    import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
+  ])
+
+  GlobalWorkerOptions.workerSrc = workerModule.default
+
+  const buffer = await file.arrayBuffer()
+  const loadingTask = getDocument({ data: buffer })
+  const pdf = await loadingTask.promise
+  const page = await pdf.getPage(1)
+
+  const baseViewport = page.getViewport({ scale: 1 })
+  const maxDim = Math.max(baseViewport.width, baseViewport.height)
+  const targetMax = 1800
+  const renderScale = maxDim > 0 ? Math.min(3, targetMax / maxDim) : 1
+  const viewport = page.getViewport({ scale: Math.max(renderScale, 1) })
+
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d', { alpha: false })
+  if (!ctx) throw new Error('Could not create canvas context for PDF rendering')
+
+  canvas.width = Math.ceil(viewport.width)
+  canvas.height = Math.ceil(viewport.height)
+
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+  await page.render({ canvasContext: ctx, viewport }).promise
+
+  return canvas.toDataURL('image/png')
 }
 
 function removeBackground() {
@@ -283,11 +488,22 @@ function removeBackground() {
 
 function removeDesign() {
   drawingStore.clear()
+  drawingStore.clearVectorizedPaths()
+  drawingStore.clearLastVectorization()
+  showStitchSettingsDialog.value = false
+  vectorizationPathCount.value = 0
 }
 
 function clearAll() {
-  removeBackground();
-  removeDesign();
+  drawingStore.clear()
+  drawingStore.clearVectorizedPaths()
+  drawingStore.clearLastVectorization()
+  imageToVectorize.value = null
+  initialVectorizeSettings.value = null
+  vectorizationPathCount.value = 0
+  showImageChoiceDialog.value = false
+  showVectorizeDialog.value = false
+  showStitchSettingsDialog.value = false
 }
 
 function calculateZoomToFit() {
@@ -318,6 +534,28 @@ function updateImageScale() {
 
 function chooseVectorize() {
   showImageChoiceDialog.value = false
+
+  if (importSourceType.value === 'svg' && Array.isArray(importedSvgPaths.value) && importedSvgPaths.value.length > 0) {
+    const bounds = VectorizeService.calculateBounds(importedSvgPaths.value)
+    const metadata = {
+      autoFit: true,
+      outputScale: 1,
+      bounds,
+      pathCount: importedSvgPaths.value.length,
+      settings: {
+        sourceType: 'svg',
+        autoTuneForSource: false,
+        importedAsVector: true,
+      },
+    }
+
+    drawingStore.setVectorizedPaths(importedSvgPaths.value, metadata)
+    drawingStore.setLastVectorization(imageToVectorize.value, metadata.settings)
+    vectorizationPathCount.value = importedSvgPaths.value.length
+    closeDialog()
+    return
+  }
+
   showVectorizeDialog.value = true
 }
 
@@ -332,7 +570,13 @@ function chooseBackground() {
 
 function openReVectorize() {
   imageToVectorize.value = drawingStore.lastVectorizedImage
-  initialVectorizeSettings.value = drawingStore.lastVectorizeSettings
+  const savedSourceType = drawingStore.lastVectorizeSettings?.sourceType || 'image'
+  importSourceType.value = savedSourceType
+  initialVectorizeSettings.value = {
+    ...drawingStore.lastVectorizeSettings,
+    sourceType: savedSourceType,
+    autoTuneForSource: drawingStore.lastVectorizeSettings?.autoTuneForSource ?? true,
+  }
   showVectorizeDialog.value = true
 }
 

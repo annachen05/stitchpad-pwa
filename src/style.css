@@ -121,10 +121,22 @@ drawing-canvas, .drawing-canvas {
   flex-direction: row;
   align-items: center;
   justify-content: center;
-  padding: 0.8rem 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.8rem 1rem calc(0.8rem + env(safe-area-inset-bottom, 0px));
   z-index: 10; /* Reduce z-index to allow other elements to be clickable */
   gap: 1rem;
   border: none;
+}
+
+.toolbar-bottom.is-overflowing {
+  justify-content: flex-start;
+}
+
+.toolbar-bottom > * {
+  flex: 0 0 auto;
 }
 
 .about-dialog {

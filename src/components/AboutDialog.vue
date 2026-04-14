@@ -5,7 +5,7 @@
       <p>
         Version: 1.0.0<br />
         Stitchpad PWA<br />
-        © 2025 Anna and TechSisTask<br />
+        © 2025 annachen05 and TechSisTask<br />
         This project is licensed under the MIT License.<br />
         See the LICENSE file for details.
       </p>
