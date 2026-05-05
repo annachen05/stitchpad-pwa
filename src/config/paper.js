@@ -5,7 +5,7 @@
 export const PX_PER_CM = 96 / 2.54
 
 // Physical stitchable area (cm). Orientation can be flipped in the UI.
-export const BASE_PAPER_CM = Object.freeze({ w: 13, h: 8.6 })
+export const BASE_PAPER_CM = Object.freeze({ w: 12.9, h: 8.7 })
 
 export const PAPER_CM_PORTRAIT = Object.freeze({ w: BASE_PAPER_CM.h, h: BASE_PAPER_CM.w })
 export const PAPER_CM_LANDSCAPE = Object.freeze({ w: BASE_PAPER_CM.w, h: BASE_PAPER_CM.h })

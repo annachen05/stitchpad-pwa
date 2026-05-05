@@ -1,6 +1,6 @@
 // Create src/config/machine.js
-export const MACHINE_BOUNDS_PORTRAIT = Object.freeze({ maxX: 86, maxY: 130 })
-export const MACHINE_BOUNDS_LANDSCAPE = Object.freeze({ maxX: 130, maxY: 86 })
+export const MACHINE_BOUNDS_PORTRAIT = Object.freeze({ maxX: 87, maxY: 129 })
+export const MACHINE_BOUNDS_LANDSCAPE = Object.freeze({ maxX: 129, maxY: 87 })
 
 export const MACHINE_CONFIG = {
   ...MACHINE_BOUNDS_PORTRAIT,

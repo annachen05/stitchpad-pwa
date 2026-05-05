@@ -292,7 +292,6 @@ import { PAPER_PX_PORTRAIT, PAPER_PX_LANDSCAPE, GRID_PX } from '@/config/paper.j
 import { fitPathsToRect } from '@/utils/pathPlacement.js'
 
 // ### ADD THIS IMPORT ###
-import { lineInterpolate } from '@/services/embroidery.js'  // your old adaptive routine
 
 const drawingStore = useDrawingStore()
 const uiStore = useUIStore()
@@ -341,7 +340,6 @@ const eraserPreview = ref({
 })
 
 
-let prevStepsLen = drawingStore.shepherd.steps.length
 watch(
   () => drawingStore.shepherd.steps.length,
   (newLen, oldLen) => {
@@ -357,7 +355,6 @@ watch(
         lastPos.value = null
       }
     }
-    prevStepsLen = newLen
   }
 )
 
@@ -896,7 +893,7 @@ function onPointerMove(e) {
   }
 }
 
-function onPointerUp(e) {
+function onPointerUp() {
   drawing = false
   isPanning.value = false
   eraserPreview.value.visible = false
@@ -1131,10 +1128,6 @@ onUnmounted(() => {
   }
 })
 
-function undo() {
-  drawingStore.undo()
-  lastPos.value = null // Reset lastPos when undo is triggered
-}
 </script>
 
 <style scoped>

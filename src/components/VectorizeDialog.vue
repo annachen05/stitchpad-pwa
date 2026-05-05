@@ -390,6 +390,7 @@ import { useDrawingStore } from '@/stores/drawing.js'
 import { VectorizeService } from '@/services/vectorizeService.js'
 import { useToastStore } from '@/stores/toast.js'
 import { buildAutoVectorizationProfile } from '@/utils/vectorizeUtils.js'
+import { GRID_PX } from '@/config/paper.js'
 
 const props = defineProps({
   show: Boolean,
@@ -711,7 +712,8 @@ async function drawPreview(paths) {
   
   ctx.strokeStyle = '#e0e0e0'
   ctx.lineWidth = 0.5
-  const gridSize = 20
+  const gridScale = cssWidth / Math.max(1, width)
+  const gridSize = Math.max(8, Math.round(GRID_PX * gridScale))
   for (let x = 0; x <= cssWidth; x += gridSize) {
     ctx.beginPath()
     ctx.moveTo(x, 0)

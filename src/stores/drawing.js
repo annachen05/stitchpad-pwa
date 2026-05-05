@@ -521,16 +521,6 @@ export const useDrawingStore = defineStore('drawing', {
     },
 
     // Export actions with path optimization
-    async exportDST(name = 'design') {
-      const shepherd = this.getOptimizedShepherd()
-      await ExportService.exportDST(shepherd, name)
-    },
-
-    async exportEXP(name = 'design') {
-      const shepherd = this.getOptimizedShepherd()
-      await ExportService.exportEXP(shepherd, name)
-    },
-
     async exportSVG(name = 'design') {
       const steps = this.optimizePathsEnabled ? optimizeStitchPaths(this.shepherd.steps) : this.shepherd.steps
       await ExportService.exportSVG(steps, name, this.paperPx, this.paperRect)
@@ -541,6 +531,34 @@ export const useDrawingStore = defineStore('drawing', {
         ? optimizeStitchPaths(this.shepherd.steps)
         : this.shepherd.steps
       await ExportService.exportGCode(steps, name, this.machineBounds, this.paperPx, this.paperRect)
+    },
+
+    async exportTXT(name = 'design') {
+      const steps = this.optimizePathsEnabled
+        ? optimizeStitchPaths(this.shepherd.steps)
+        : this.shepherd.steps
+      await ExportService.exportTXT(steps, name, this.paperPx, this.paperRect)
+    },
+
+    async exportPNG(name = 'design') {
+      const steps = this.optimizePathsEnabled
+        ? optimizeStitchPaths(this.shepherd.steps)
+        : this.shepherd.steps
+      await ExportService.exportPNG(steps, name, this.paperPx, this.paperRect)
+    },
+
+    async exportJPG(name = 'design') {
+      const steps = this.optimizePathsEnabled
+        ? optimizeStitchPaths(this.shepherd.steps)
+        : this.shepherd.steps
+      await ExportService.exportJPG(steps, name, this.paperPx, this.paperRect)
+    },
+
+    async exportPDF(name = 'design') {
+      const steps = this.optimizePathsEnabled
+        ? optimizeStitchPaths(this.shepherd.steps)
+        : this.shepherd.steps
+      await ExportService.exportPDF(steps, name, this.paperPx, this.paperRect)
     },
 
     // Helper to get shepherd with optimized paths if enabled

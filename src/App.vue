@@ -10,12 +10,8 @@
       {{ uiStore.sideToolbarOpen ? '<<' : '>>' }}
     </button>
     <div class="side-toolbar" :class="{ closed: !uiStore.sideToolbarOpen }">
-      <button class="btn btn-toolbar" @click="showSaveDialog = true">Save</button>
+      <button class="btn btn-toolbar" @click="handleExport">Export</button>
       <button class="btn btn-toolbar" @click="drawingStore.clear">Clear</button>
-      <button class="btn btn-toolbar" @click="exportGCode" :disabled="isExportingGCode" title="Export G-code">
-        {{ isExportingGCode ? '⏳' : 'Export G-code' }}
-      </button>
-      <ExportButtons />
       
       <!-- Machine Control Buttons -->
       <button class="btn btn-toolbar" @click="connectToMachine">Connect Machine</button>
@@ -52,60 +48,36 @@
 <script>
 // filepath: c:\Users\annam\Desktop\stitchpad-pwa\src\App.vue
 import Toolbar from './components/Toolbar.vue'
-import ExportButtons from './components/ExportButtons.vue'
 import SaveDialog from './components/SaveDialog.vue'
 import AboutDialog from './components/AboutDialog.vue'
 import ImportDialog from './components/ImportDialog.vue'
 import StitchSettingsDialog from './components/StitchSettingsDialog.vue'
-import MachineControl from './components/MachineControl.vue'
 import { useDrawingStore } from '@/stores/drawing.js'
 import { useUIStore } from '@/stores/ui.js'
 import { useToastStore } from '@/stores/toast.js' 
 import { ref, provide } from 'vue'
-import StitchToolbar from './components/StitchToolbar.vue' 
 import { klipperService } from './services/klipperService.js'
+import { ExportService } from './services/exportService.js'
 import { generateGCode } from './utils/exportUtils.js'
 
 export default {
   components: {
     Toolbar,
-    ExportButtons,
     SaveDialog,
     AboutDialog,
     ImportDialog,
     StitchSettingsDialog,
-    StitchToolbar,
-    MachineControl,
-  },
-  data() {
-    return {
-      showSaveDialog: false,
-      showAboutDialog: false,
-      showMachineControl: false,
-    }
   },
   setup() {
+    const showSaveDialog = ref(false)
+    const showAboutDialog = ref(false)
+    const showMachineControl = ref(false)
     const drawingStore = useDrawingStore()
     const uiStore = useUIStore()
     const toastStore = useToastStore() 
-    const isExportingGCode = ref(false)
     const isImportDialogVisible = ref(false)
     const isStitchSettingsVisible = ref(false)
 
-    async function exportGCode() {
-      if (isExportingGCode.value) return
-
-      try {
-        isExportingGCode.value = true
-        await drawingStore.exportGCode('my-design')
-      } catch (error) {
-        console.error('G-code export failed:', error)
-        // 4. Use the toast store to show the error
-        toastStore.showError('Failed to export G-code: ' + error.message)
-      } finally {
-        isExportingGCode.value = false
-      }
-    }
 
     function connectToMachine() {
       klipperService.connect()
@@ -126,6 +98,17 @@ export default {
       klipperService.sendGCode(gcode)
     }
 
+    async function handleExport() {
+      if (typeof window !== 'undefined' && 'showSaveFilePicker' in window) {
+        const handled = await ExportService.triggerNativeExport(drawingStore)
+        if (!handled) {
+          // Fallback to dialog if error (but not abort)
+          showSaveDialog.value = true
+        }
+      } else {
+        showSaveDialog.value = true
+      }
+    }
 
     provide('showImportDialog', () => {
       isImportDialogVisible.value = true
@@ -143,13 +126,15 @@ export default {
       drawingStore,
       uiStore,
       toastStore, 
-      isExportingGCode,
-      exportGCode,
       isImportDialogVisible,
       isStitchSettingsVisible,
       openStitchSettings,
       connectToMachine,
       sendToMachine,
+      handleExport,
+      showSaveDialog,
+      showAboutDialog,
+      showMachineControl,
     }
   },
 }

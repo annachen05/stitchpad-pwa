@@ -11,7 +11,7 @@
     "lint:fix": "eslint . --ext .js,.vue --fix --max-warnings 20",
     "lint:strict": "eslint . --ext .js,.vue --max-warnings 0",
     "test": "npm run test:unit && npm run test:e2e",
-    "test:unit": "vitest",
+    "test:unit": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug"

@@ -1,22 +1,5 @@
-/**
- * Validates the structure of a DST file.
- * @param {Uint8Array} content - The binary content of the DST file.
- * @throws {Error} If the file is invalid.
- */
 import { MACHINE_CONFIG } from '@/config/machine.js'
 import { PX_PER_CM } from '@/config/paper.js'
-
-export function validateDST(content) {
-  console.log('Validating DST file. Length:', content.length) // Debugging log
-
-  if (content.length < 515) {
-    throw new Error('Invalid DST file: Too short')
-  }
-  if (content.slice(-3).toString() !== [0x00, 0x00, 0xf3].toString()) {
-    throw new Error('Invalid DST file: Missing EOF marker')
-  }
-  console.log('DST file is valid')
-}
 
 /**
  * Converts a Uint8Array to a readable hex string for debugging purposes.
@@ -97,7 +80,7 @@ export function generateSVG(steps, maxX, maxY) {
  * Generates a paper-sized SVG in millimeters.
  * - Coordinates are interpreted as "world" coords used in the app.
  * - We convert to paper-local coords by subtracting paperRect.x/y.
- * - Output SVG uses mm units so 13x8.6cm becomes 130x86mm (depending on orientation).
+ * - Output SVG uses mm units so 12.9x8.7cm becomes 129x87mm (depending on orientation).
  */
 export function generatePaperSVG(steps, name = 'design', paperPx, paperRect) {
   if (!paperPx || !Number.isFinite(paperPx.w) || !Number.isFinite(paperPx.h) || paperPx.w <= 0 || paperPx.h <= 0) {
@@ -130,6 +113,29 @@ export function generatePaperSVG(steps, name = 'design', paperPx, paperRect) {
     .join('\n')
 
   return `${svgHeader}${svgContent}${svgFooter}`
+}
+
+/**
+ * Generates a simple stitch list as plain text (mm, paper-local coordinates).
+ */
+export function generateStitchTxt(steps, name = 'design', paperPx, paperRect) {
+  if (!paperPx || !Number.isFinite(paperPx.w) || !Number.isFinite(paperPx.h) || paperPx.w <= 0 || paperPx.h <= 0) {
+    throw new Error('Missing paper size for TXT export')
+  }
+  if (!paperRect || !Number.isFinite(paperRect.x) || !Number.isFinite(paperRect.y)) {
+    throw new Error('Missing paper rect for TXT export')
+  }
+
+  const mmPerPx = 10 / PX_PER_CM
+  const lines = [`Design: ${name}`, 'x_mm,y_mm,penDown']
+
+  for (const step of steps || []) {
+    const x = (step.x2 - paperRect.x) * mmPerPx
+    const y = (step.y2 - paperRect.y) * mmPerPx
+    lines.push(`${x.toFixed(3)},${y.toFixed(3)},${step.penDown ? 1 : 0}`)
+  }
+
+  return lines.join('\n')
 }
 
 /**
@@ -238,7 +244,7 @@ export function generateGCode(steps, filename = 'design', machineBounds = MACHIN
   const deviceMaxY = machineBounds?.maxY ?? MACHINE_CONFIG.maxY
 
   // Canvas coordinates are in CSS px using a fixed 96dpi baseline.
-  // Convert px -> mm so that 13x8.6cm canvas exports as 130x86mm without rescaling.
+  // Convert px -> mm so that 12.9x8.7cm canvas exports as 129x87mm without rescaling.
   const mmPerPx = 10 / PX_PER_CM
   const widthMm = widthPx * mmPerPx
   const heightMm = heightPx * mmPerPx
