@@ -133,6 +133,12 @@ export class ExportService {
       return false; // Signals App.vue to use fallback SaveDialog
     }
 
+    // In automated browser runs (Playwright), opening the native OS file picker will hang the test.
+    // Fall back to the in-app export dialog instead.
+    if (typeof window !== 'undefined' && window.navigator && window.navigator.webdriver) {
+      return false
+    }
+
     try {
       const handle = await window.showSaveFilePicker({
         suggestedName: 'stitch-design',

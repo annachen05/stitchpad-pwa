@@ -240,27 +240,37 @@
             pointer-events="none"
           />
 
-          <!-- Render each step as individual line segments -->
-          <line
-            v-for="(step, i) in visibleSteps"
-            :key="i"
-            :x1="step.x1"
-            :y1="step.y1"
-            :x2="step.x2"
-            :y2="step.y2"
-            :stroke="step.penDown ? '#333' : '#f00'"
-            :stroke-width="getScaleAwareLineWidth(step.penDown)"
-            :opacity="step.penDown ? 1 : 0.5"
+          <!-- Render stitches as paths (much faster than thousands of <line>/<circle> nodes on iPad) -->
+          <path
+            v-if="penPathD"
+            :d="penPathD"
+            fill="none"
+            stroke="#333"
+            :stroke-width="getScaleAwareLineWidth(true)"
+            stroke-linecap="round"
+            stroke-linejoin="round"
           />
-          <!-- Show interpolation points as purple dots -->
+          <path
+            v-if="jumpPathD"
+            :d="jumpPathD"
+            fill="none"
+            stroke="#f00"
+            :stroke-width="getScaleAwareLineWidth(false)"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            opacity="0.5"
+          />
+
+          <!-- Optional: keep a small number of dots for feedback (caps DOM size) -->
           <circle
-            v-for="(step, i) in visibleSteps"
+            v-for="(step, i) in dotSteps"
             :key="'pt-' + i"
             :cx="step.x2"
             :cy="step.y2"
             :r="getScaleAwareDotRadius()"
             :fill="'#7a0081'"
             opacity="0.8"
+            pointer-events="none"
           />
         </g>
         
@@ -283,7 +293,7 @@
 
 <script setup>
 // filepath: c:\Users\annam\Desktop\stitchpad-pwa\src\components\DrawingCanvas.vue
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { ref, shallowRef, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useDrawingStore } from '@/stores/drawing.js'
 import { useUIStore } from '@/stores/ui.js'
 
@@ -300,6 +310,13 @@ const svgRef = ref(null)
 const width = ref(window.innerWidth)
 const toolbarHeight = ref(0)
 const height = ref(window.innerHeight)
+
+// Cache DOMRect to avoid layout reads on every move
+let cachedSvgRect = null
+function updateCachedRect() {
+  const el = svgRef.value || canvasRef.value
+  cachedSvgRect = el ? el.getBoundingClientRect() : null
+}
 
 // Keep enough breathing room so the paper shadow isn't clipped by the SVG bounds.
 const PAPER_SHADOW_MARGIN = 80
@@ -339,6 +356,36 @@ const eraserPreview = ref({
   y: 0
 })
 
+// ---- Performance: stitch rendering as SVG paths (incremental append) ----
+const penPathD = shallowRef('')
+const jumpPathD = shallowRef('')
+let lastRenderedStepCount = 0
+
+function appendStepToPaths(step) {
+  if (!step) return
+  const seg = `M ${step.x1} ${step.y1} L ${step.x2} ${step.y2}`
+  if (step.penDown) {
+    penPathD.value += (penPathD.value ? ' ' : '') + seg
+  } else {
+    jumpPathD.value += (jumpPathD.value ? ' ' : '') + seg
+  }
+}
+
+function rebuildPathsFromSteps(steps) {
+  let pen = ''
+  let jump = ''
+  if (Array.isArray(steps)) {
+    for (const s of steps) {
+      const seg = `M ${s.x1} ${s.y1} L ${s.x2} ${s.y2}`
+      if (s.penDown) pen += (pen ? ' ' : '') + seg
+      else jump += (jump ? ' ' : '') + seg
+    }
+  }
+  penPathD.value = pen
+  jumpPathD.value = jump
+  lastRenderedStepCount = Array.isArray(steps) ? steps.length : 0
+}
+
 
 watch(
   () => drawingStore.shepherd.steps.length,
@@ -355,6 +402,39 @@ watch(
         lastPos.value = null
       }
     }
+  }
+)
+
+// Rebuild paths when the steps array is replaced (erase, rotate, reset)
+watch(
+  () => drawingStore.shepherd.steps,
+  (steps) => {
+    rebuildPathsFromSteps(steps)
+  },
+  { deep: false, immediate: true }
+)
+
+// Incrementally append when steps grow (common while drawing)
+watch(
+  () => drawingStore.shepherd.steps.length,
+  (newLen) => {
+    const steps = drawingStore.shepherd.steps
+    if (!Array.isArray(steps)) {
+      penPathD.value = ''
+      jumpPathD.value = ''
+      lastRenderedStepCount = 0
+      return
+    }
+
+    if (newLen < lastRenderedStepCount) {
+      rebuildPathsFromSteps(steps)
+      return
+    }
+
+    for (let i = lastRenderedStepCount; i < newLen; i++) {
+      appendStepToPaths(steps[i])
+    }
+    lastRenderedStepCount = newLen
   }
 )
 
@@ -582,7 +662,7 @@ function getScaleAwareStitchSpacing() {
 
 function getRelativePos(e) {
   const target = svgRef.value || canvasRef.value
-  const rect = target.getBoundingClientRect()
+  const rect = cachedSvgRect || target.getBoundingClientRect()
   const localX = e.clientX - rect.left
   const localY = e.clientY - rect.top
   return {
@@ -594,7 +674,7 @@ function getRelativePos(e) {
 // Get relative position for touch events
 function getTouchRelativePos(touch) {
   const target = svgRef.value || canvasRef.value
-  const rect = target.getBoundingClientRect()
+  const rect = cachedSvgRect || target.getBoundingClientRect()
   const localX = touch.clientX - rect.left
   const localY = touch.clientY - rect.top
   return {
@@ -609,7 +689,7 @@ function clamp(val, min, max) {
 
 function getSvgLocalPointFromClient(clientX, clientY) {
   const el = svgRef.value || canvasRef.value
-  const rect = el.getBoundingClientRect()
+  const rect = cachedSvgRect || el.getBoundingClientRect()
   return { x: clientX - rect.left, y: clientY - rect.top }
 }
 
@@ -751,6 +831,24 @@ function updatePinch(t1, t2) {
   setPanClamped(nextPanX, nextPanY)
 }
 
+// Throttle pinch updates to once per animation frame for smoother iPad zoom.
+let pinchPending = null
+let pinchRaf = 0
+function schedulePinchUpdate(t1, t2) {
+  pinchPending = {
+    t1: { clientX: t1.clientX, clientY: t1.clientY },
+    t2: { clientX: t2.clientX, clientY: t2.clientY },
+  }
+  if (pinchRaf) return
+  pinchRaf = window.requestAnimationFrame(() => {
+    pinchRaf = 0
+    const p = pinchPending
+    pinchPending = null
+    if (!p) return
+    updatePinch(p.t1, p.t2)
+  })
+}
+
 function endPinch() {
   pinchState.value = null
 }
@@ -803,6 +901,57 @@ function addLine(pos1, pos2) {
     uiStore.toggleJump() // Toggle back to normal drawing
   } else {
     drawingStore.addLine(pos1.x, pos1.y, pos2.x, pos2.y, true)
+  }
+}
+
+// ---- Performance: batch drawing updates to 60fps (reduce Pencil/touch event churn) ----
+let pendingPoints = []
+let pendingRaf = 0
+
+function enqueueDrawPoint(pos) {
+  pendingPoints.push(pos)
+  if (pendingRaf) return
+  pendingRaf = window.requestAnimationFrame(() => {
+    pendingRaf = 0
+    const points = pendingPoints
+    pendingPoints = []
+
+    if (!drawing) return
+    const spacing = getScaleAwareStitchSpacing()
+
+    for (const p of points) {
+      if (!p) continue
+      if (!isInsidePaper(p)) {
+        drawing = false
+        break
+      }
+      if (!lastPos.value) {
+        lastPos.value = p
+        continue
+      }
+      if (distance(lastPos.value, p) >= spacing) {
+        ensureConnectedPoints(p)
+      }
+    }
+  })
+}
+
+function flushPendingPoints() {
+  if (!pendingPoints.length) return
+  // Process immediately (no frame delay) on pointer up
+  const points = pendingPoints
+  pendingPoints = []
+  const spacing = getScaleAwareStitchSpacing()
+  for (const p of points) {
+    if (!p) continue
+    if (!isInsidePaper(p)) break
+    if (!lastPos.value) {
+      lastPos.value = p
+      continue
+    }
+    if (distance(lastPos.value, p) >= spacing) {
+      ensureConnectedPoints(p)
+    }
   }
 }
 
@@ -888,12 +1037,11 @@ function onPointerMove(e) {
     return
   }
 
-  if (distance(lastPos.value || pos, pos) >= getScaleAwareStitchSpacing()) {
-    ensureConnectedPoints(pos)
-  }
+  enqueueDrawPoint(pos)
 }
 
 function onPointerUp() {
+  flushPendingPoints()
   drawing = false
   isPanning.value = false
   eraserPreview.value.visible = false
@@ -937,7 +1085,7 @@ function onTouchStart(e) {
 
 function onTouchMove(e) {
   if (pinchState.value && e.touches.length === 2) {
-    updatePinch(e.touches[0], e.touches[1])
+    schedulePinchUpdate(e.touches[0], e.touches[1])
     return
   }
   if (!drawing || e.touches.length !== 1) return
@@ -962,15 +1110,14 @@ function onTouchMove(e) {
     return
   }
   
-  if (distance(lastPos.value || pos, pos) >= getScaleAwareStitchSpacing()) {
-    ensureConnectedPoints(pos)
-  }
+  enqueueDrawPoint(pos)
 }
 
 function onTouchEnd(e) {
   if (pinchState.value && e.touches.length < 2) {
     endPinch()
   }
+  flushPendingPoints()
   drawing = false
   eraserPreview.value.visible = false
 }
@@ -991,9 +1138,12 @@ const onDrop = async (event) => {
   }
 }
 
-// Virtualize large step lists
-const visibleSteps = computed(() => {
-  return drawingStore.shepherd.steps
+// Keep dot rendering capped to avoid huge DOM on mobile/tablets.
+const dotSteps = computed(() => {
+  const steps = drawingStore.shepherd.steps
+  if (!Array.isArray(steps) || steps.length === 0) return []
+  const MAX_DOTS = 200
+  return steps.length > MAX_DOTS ? steps.slice(-MAX_DOTS) : steps
 })
 
 // Keep pan within bounds whenever something changes that affects visibility.
@@ -1079,6 +1229,9 @@ onMounted(() => {
 
     drawingStore.setViewportSize(width.value, height.value)
 
+    // Update cached rect after resize/layout changes
+    updateCachedRect()
+
     // If view requests recenter (initial load/reset/clear), center around viewport center
     if (drawingStore.needsRecenter) {
       recenterView()
@@ -1103,6 +1256,9 @@ onMounted(() => {
   if (svgRef.value) {
     svgRef.value.addEventListener('wheel', onWheelGesture, { passive: false })
   }
+
+  // Cache rect once SVG exists
+  updateCachedRect()
 
   // Ensure pan is clamped on first render
   setPanClamped(drawingStore.panX || 0, drawingStore.panY || 0)

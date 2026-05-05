@@ -53,13 +53,19 @@ test('should show machine control buttons', async ({ page }) => {
 
 test('should show export functionality', async ({ page }) => {
   await page.goto('/')
-  
-  // Only test for SVG export button since DST/EXP are hidden
-  await expect(page.locator('button', { hasText: 'Export SVG' })).toBeVisible()
-  
-  // Test that DST/EXP buttons are NOT visible
-  await expect(page.locator('button', { hasText: 'Export DST' })).not.toBeVisible()
-  await expect(page.locator('button', { hasText: 'Export EXP' })).not.toBeVisible()
+
+  // Single export entry point lives in the left toolbar
+  const exportButton = page.locator('.side-toolbar button', { hasText: 'Export' }).first()
+  await expect(exportButton).toBeVisible()
+
+  // Clicking Export should open the in-app export dialog in automated tests
+  // (native OS file picker is disabled under Playwright to prevent hangs)
+  await exportButton.click()
+  await expect(page.locator('.save-dialog')).toBeVisible()
+
+  // Ensure unreliable formats are not exposed
+  await expect(page.getByText('DST', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('EXP', { exact: true })).toHaveCount(0)
 })
 
 test('should toggle side toolbar', async ({ page }) => {
