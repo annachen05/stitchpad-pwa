@@ -1,0 +1,266 @@
+<template>
+  <div id="app-container">
+    <!-- Use uiStore for sideToolbarOpen instead of local data -->
+    <button
+      class="toolbar-toggle"
+      :class="{ closed: !uiStore.sideToolbarOpen }"
+      :aria-label="uiStore.sideToolbarOpen ? 'Hide left toolbar' : 'Show left toolbar'"
+      @click="uiStore.toggleSideToolbar()"
+    >
+      {{ uiStore.sideToolbarOpen ? '<<' : '>>' }}
+    </button>
+    <div class="side-toolbar" :class="{ closed: !uiStore.sideToolbarOpen }">
+      <button class="btn btn-toolbar" @click="handleExport">Export</button>
+      <button class="btn btn-toolbar" @click="drawingStore.clear">Clear</button>
+      
+      <!-- Machine Control Buttons -->
+      <button class="btn btn-toolbar" @click="connectToMachine">Connect Machine</button>
+      <button class="btn btn-toolbar" @click="sendToMachine">Send to Machine</button>
+      
+      <button class="btn btn-toolbar" @click="showAboutDialog = true">About</button>
+
+    </div>
+
+    <router-view />
+
+    <Toolbar
+      @show-import-dialog="isImportDialogVisible = true"
+      @show-stitch-settings="openStitchSettings"
+    />
+    <ImportDialog :show="isImportDialogVisible" @close="isImportDialogVisible = false" />
+    <StitchSettingsDialog
+      :show="isStitchSettingsVisible"
+      :pathCount="(drawingStore.vectorizedPaths && drawingStore.vectorizedPaths.length) || 0"
+      @close="isStitchSettingsVisible = false"
+      @apply="isStitchSettingsVisible = false"
+    />
+    <SaveDialog v-if="showSaveDialog" @close="showSaveDialog = false" />
+    <AboutDialog v-if="showAboutDialog" @close="showAboutDialog = false" />
+
+    <!-- Updated Toast Notification -->
+    <div v-if="toastStore.visible" :class="['toast-notification', toastStore.type]">
+      {{ toastStore.message }}
+      <button @click="toastStore.hideToast()">×</button>
+    </div>
+  </div>
+</template>
+
+<script>
+// filepath: c:\Users\annam\Desktop\stitchpad-pwa\src\App.vue
+import Toolbar from './components/Toolbar.vue'
+import SaveDialog from './components/SaveDialog.vue'
+import AboutDialog from './components/AboutDialog.vue'
+import ImportDialog from './components/ImportDialog.vue'
+import StitchSettingsDialog from './components/StitchSettingsDialog.vue'
+import { useDrawingStore } from '@/stores/drawing.js'
+import { useUIStore } from '@/stores/ui.js'
+import { useToastStore } from '@/stores/toast.js' 
+import { ref, provide } from 'vue'
+import { klipperService } from './services/klipperService.js'
+import { ExportService } from './services/exportService.js'
+import { generateGCode } from './utils/exportUtils.js'
+
+export default {
+  components: {
+    Toolbar,
+    SaveDialog,
+    AboutDialog,
+    ImportDialog,
+    StitchSettingsDialog,
+  },
+  setup() {
+    const showSaveDialog = ref(false)
+    const showAboutDialog = ref(false)
+    const showMachineControl = ref(false)
+    const drawingStore = useDrawingStore()
+    const uiStore = useUIStore()
+    const toastStore = useToastStore() 
+    const isImportDialogVisible = ref(false)
+    const isStitchSettingsVisible = ref(false)
+
+
+    function connectToMachine() {
+      klipperService.connect()
+    }
+
+    function sendToMachine() {
+      if (drawingStore.shepherd.steps.length === 0) {
+        toastStore.showError('Drawing is empty. Nothing to send.')
+        return
+      }
+      const gcode = generateGCode(
+        drawingStore.shepherd.steps,
+        'stitchpad-design',
+        drawingStore.machineBounds,
+        drawingStore.paperPx,
+        drawingStore.paperRect
+      )
+      klipperService.sendGCode(gcode)
+    }
+
+    async function handleExport() {
+      if (typeof window !== 'undefined' && 'showSaveFilePicker' in window) {
+        const handled = await ExportService.triggerNativeExport(drawingStore)
+        if (!handled) {
+          // Fallback to dialog if error (but not abort)
+          showSaveDialog.value = true
+        }
+      } else {
+        showSaveDialog.value = true
+      }
+    }
+
+    provide('showImportDialog', () => {
+      isImportDialogVisible.value = true
+    })
+
+    function openStitchSettings() {
+      if (!drawingStore.vectorizedPaths || drawingStore.vectorizedPaths.length === 0) {
+        toastStore.showError('No vectorized paths available. Vectorize an image first.')
+        return
+      }
+      isStitchSettingsVisible.value = true
+    }
+
+    return {
+      drawingStore,
+      uiStore,
+      toastStore, 
+      isImportDialogVisible,
+      isStitchSettingsVisible,
+      openStitchSettings,
+      connectToMachine,
+      sendToMachine,
+      handleExport,
+      showSaveDialog,
+      showAboutDialog,
+      showMachineControl,
+    }
+  },
+}
+</script>
+
+<style>
+#app-container {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+}
+.side-toolbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  width: 150px;
+  background: #222;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 2rem;
+  padding-bottom: 6rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  z-index: 10;
+  transition:
+    transform 0.3s cubic-bezier(0.4, 2, 0.6, 1),
+    opacity 0.3s;
+}
+.side-toolbar.closed {
+  transform: translateX(-100%);
+  opacity: 0.2;
+  pointer-events: none;
+}
+.toolbar-toggle {
+  position: fixed;
+  top: 1rem;
+  left: 150px;
+  z-index: 20;
+  background: #7a0081;
+  color: #fff;
+  border: none;
+  border-radius: 0 6px 6px 0;
+  font-size: 1.5rem;
+  padding: 0.2em 0.5em;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.toolbar-toggle.closed {
+  left: 0;
+}
+.toolbar-toggle:hover {
+  background: #b62b8c;
+}
+.side-toolbar button {
+  margin: 1rem 0;
+  width: 90px;
+  color: #fff;
+  background: #333;
+  border: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  padding: 0.7em 0.5em;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.side-toolbar button:hover {
+  background: #7b008161;
+}
+.side-toolbar .export-bar {
+  margin-top: 2rem;
+}
+
+/* Update CSS to be more generic */
+.toast-notification {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  color: white;
+  padding: 1rem;
+  border-radius: 5px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+}
+
+/* Style for different toast types */
+.toast-notification.error {
+  background: #f44336; 
+}
+.toast-notification.success {
+  background: #4CAF50; 
+}
+.toast-notification.info {
+  background: #2196F3; 
+}
+
+
+.toast-notification button {
+  margin-left: 1rem;
+  background: none;
+  border: none;
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+  font-size: 1.2rem;
+}
+
+.machine-section {
+  margin: 1rem 0;
+}
+
+.machine-panel {
+  position: absolute;
+  left: 160px;
+  top: 0;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 1rem;
+  min-width: 300px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 100;
+}
+</style>

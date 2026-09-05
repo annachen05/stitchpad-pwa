@@ -1,0 +1,43 @@
+{
+  "name": "stitchpad-pwa",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --ext .js,.vue --max-warnings 20",
+    "lint:fix": "eslint . --ext .js,.vue --fix --max-warnings 20",
+    "lint:strict": "eslint . --ext .js,.vue --max-warnings 0",
+    "test": "npm run test:unit && npm run test:e2e",
+    "test:unit": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug"
+  },
+  "dependencies": {
+    "file-saver": "^2.0.5",
+    "lodash-es": "^4.17.21",
+    "pdfjs-dist": "^4.10.38",
+    "pinia": "^3.0.2",
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.52.0",
+    "@types/node": "^22.15.29",
+    "@vitejs/plugin-vue": "^5.2.3",
+    "eslint": "^9.31.0",
+    "eslint-config-prettier": "^10.1.5",
+    "eslint-plugin-prettier": "^5.5.1",
+    "eslint-plugin-vue": "^10.3.0",
+    "jsdom": "^26.1.0",
+    "playwright": "^1.52.0",
+    "prettier": "^3.5.3",
+    "vite": "^6.3.5",
+    "vite-plugin-pwa": "^1.0.0",
+    "vitest": "^3.2.0",
+    "vue-eslint-parser": "^10.2.0"
+  }
+}
